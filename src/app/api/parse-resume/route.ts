@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { v4 as uuidv4 } from "uuid";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
+import { db, candidates, workExperiences, educations, projects } from "@/db";
 
 const anthropic = new Anthropic();
 
@@ -144,8 +144,93 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
 
     const parsedData = JSON.parse(jsonMatch[0]);
 
+    // ============================================
+    // Save to database
+    // ============================================
+
+    // 1. Create candidate record
+    const [newCandidate] = await db.insert(candidates).values({
+      name: parsedData.basicInfo?.name || "Unknown",
+      email: parsedData.basicInfo?.email || null,
+      phone: parsedData.basicInfo?.phone || null,
+      location: parsedData.basicInfo?.location || null,
+      linkedin: parsedData.basicInfo?.linkedin || null,
+      github: parsedData.basicInfo?.github || null,
+      website: parsedData.basicInfo?.website || null,
+      summary: parsedData.summary || null,
+      skills: parsedData.skills || [],
+      resumeRawText: textContent,
+      status: "active",
+      pipelineStage: "resume_review",
+    }).returning();
+
+    const candidateId = newCandidate.id;
+
+    // 2. Save work experiences
+    if (parsedData.workExperience && parsedData.workExperience.length > 0) {
+      await db.insert(workExperiences).values(
+        parsedData.workExperience.map((exp: {
+          company: string;
+          title: string;
+          location?: string;
+          startDate?: string;
+          endDate?: string;
+          description?: string[];
+        }) => ({
+          candidateId,
+          company: exp.company || "",
+          title: exp.title || "",
+          location: exp.location || null,
+          startDate: exp.startDate || null,
+          endDate: exp.endDate || null,
+          description: exp.description || [],
+        }))
+      );
+    }
+
+    // 3. Save education records
+    if (parsedData.education && parsedData.education.length > 0) {
+      await db.insert(educations).values(
+        parsedData.education.map((edu: {
+          school: string;
+          degree?: string;
+          major?: string;
+          startDate?: string;
+          endDate?: string;
+          gpa?: string;
+        }) => ({
+          candidateId,
+          school: edu.school || "",
+          degree: edu.degree || null,
+          major: edu.major || null,
+          startDate: edu.startDate || null,
+          endDate: edu.endDate || null,
+          gpa: edu.gpa || null,
+        }))
+      );
+    }
+
+    // 4. Save projects
+    if (parsedData.projects && parsedData.projects.length > 0) {
+      await db.insert(projects).values(
+        parsedData.projects.map((proj: {
+          name: string;
+          description?: string;
+          technologies?: string[];
+          url?: string;
+        }) => ({
+          candidateId,
+          name: proj.name || "",
+          description: proj.description || null,
+          technologies: proj.technologies || [],
+          url: proj.url || null,
+        }))
+      );
+    }
+
+    // Build response with database ID
     const resume: ParsedResume = {
-      id: uuidv4(),
+      id: candidateId,
       basicInfo: parsedData.basicInfo || {
         name: "",
         email: "",

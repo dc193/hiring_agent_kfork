@@ -155,7 +155,59 @@ DATABASE_URL=postgresql://...   # Neon database URL
 2. **Components** - Functional components with hooks
 3. **API Routes** - Next.js App Router format
 4. **Database** - Drizzle ORM with typed queries
-5. **Styling** - Tailwind CSS utility classes
+5. **Styling** - Tailwind CSS + shadcn/ui components
+
+---
+
+## UI Component Guidelines
+
+### Use shadcn/ui components instead of raw HTML
+
+| Element | Use This | Not This |
+|---------|----------|----------|
+| Buttons | `<Button>` | `<button className="...">` |
+| Cards | `<Card>`, `<CardHeader>`, `<CardContent>` | `<div className="rounded-xl border...">` |
+| Tables | `<Table>`, `<TableRow>`, `<TableCell>` | `<table className="...">` |
+| Badges | `<Badge>` | `<span className="px-2 py-1 rounded...">` |
+| Icons | `lucide-react` icons | Inline SVG |
+
+### Component File Structure
+
+```
+src/components/
+├── ui/                    # shadcn/ui components (auto-generated)
+│   ├── button.tsx
+│   ├── card.tsx
+│   ├── badge.tsx
+│   └── table.tsx
+├── layout/                # Layout components
+│   ├── header.tsx
+│   └── footer.tsx
+└── [feature]/             # Feature-specific components
+    └── component-name.tsx
+```
+
+### Import Pattern
+
+```tsx
+// UI components
+import { Button } from "@/components/ui/button"
+import { Card, CardHeader, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+
+// Icons from lucide-react
+import { FileText, Users, ChevronLeft } from "lucide-react"
+
+// Layout components
+import { Header, Footer } from "@/components/layout"
+```
+
+### Anti-Patterns to Avoid
+
+- **NO** inline SVG icons - use `lucide-react`
+- **NO** raw `<button>`, `<table>`, `<input>` - use shadcn/ui
+- **NO** duplicated styling - extract to components
+- **NO** long component files - split into focused modules
 
 ---
 
@@ -163,3 +215,4 @@ DATABASE_URL=postgresql://...   # Neon database URL
 
 - v0.1 - Initial setup with resume parsing
 - v0.2 - Database schema with Profile/Preference framework
+- v0.3 - Add shadcn/ui component library and coding standards

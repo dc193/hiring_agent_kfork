@@ -11,8 +11,22 @@ import {
   FeatureRequestSection,
 } from "@/components/dashboard";
 
+// Safe query helper - returns empty array if table doesn't exist
+async function safeQuery<T>(queryFn: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await queryFn();
+  } catch (error) {
+    // PostgreSQL error 42P01 = undefined_table
+    if (error && typeof error === "object" && "code" in error && error.code === "42P01") {
+      console.warn("Table not found, returning empty array");
+      return [];
+    }
+    throw error;
+  }
+}
+
 export default async function Home() {
-  // Fetch all data in parallel
+  // Fetch all data in parallel with error handling for new tables
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
@@ -25,27 +39,35 @@ export default async function Home() {
     features,
     roadmap,
   ] = await Promise.all([
-    db.select().from(candidates).where(eq(candidates.status, "active")),
-    db
-      .select()
-      .from(candidates)
-      .where(eq(candidates.status, "active"))
-      .orderBy(desc(candidates.createdAt))
-      .limit(5),
-    db
-      .select()
-      .from(candidates)
-      .where(gte(candidates.createdAt, oneWeekAgo)),
-    db
-      .select()
-      .from(candidates)
-      .where(eq(candidates.pipelineStage, "phone_screen")),
-    db.select().from(bugReports).orderBy(desc(bugReports.createdAt)),
-    db
-      .select()
-      .from(featureRequests)
-      .orderBy(desc(featureRequests.votes), desc(featureRequests.createdAt)),
-    db.select().from(roadmapItems).orderBy(roadmapItems.version),
+    safeQuery(() => db.select().from(candidates).where(eq(candidates.status, "active"))),
+    safeQuery(() =>
+      db
+        .select()
+        .from(candidates)
+        .where(eq(candidates.status, "active"))
+        .orderBy(desc(candidates.createdAt))
+        .limit(5)
+    ),
+    safeQuery(() =>
+      db
+        .select()
+        .from(candidates)
+        .where(gte(candidates.createdAt, oneWeekAgo))
+    ),
+    safeQuery(() =>
+      db
+        .select()
+        .from(candidates)
+        .where(eq(candidates.pipelineStage, "phone_screen"))
+    ),
+    safeQuery(() => db.select().from(bugReports).orderBy(desc(bugReports.createdAt))),
+    safeQuery(() =>
+      db
+        .select()
+        .from(featureRequests)
+        .orderBy(desc(featureRequests.votes), desc(featureRequests.createdAt))
+    ),
+    safeQuery(() => db.select().from(roadmapItems).orderBy(roadmapItems.version)),
   ]);
 
   return (

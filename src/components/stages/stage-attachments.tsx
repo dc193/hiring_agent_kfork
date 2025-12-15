@@ -13,6 +13,8 @@ import {
   X,
   Loader2,
   Sparkles,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,6 +74,9 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Check if a type supports text input
+const TEXT_INPUT_TYPES = ["note", "评审意见"];
+
 export function StageAttachments({
   candidateId,
   stage,
@@ -87,6 +92,14 @@ export function StageAttachments({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [processingAttachments, setProcessingAttachments] = useState<Set<string>>(new Set());
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textNoteContent, setTextNoteContent] = useState("");
+  const [textNoteTitle, setTextNoteTitle] = useState("");
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+
+  // Check if selected type supports text input
+  const supportsTextInput = TEXT_INPUT_TYPES.includes(selectedType) ||
+    attachmentTypes.some(t => t.value === selectedType && TEXT_INPUT_TYPES.includes(t.label));
 
   // Poll for processing job status
   const pollProcessingStatus = useCallback(async (attachmentId: string) => {
@@ -329,76 +342,189 @@ export function StageAttachments({
     return found?.label || type;
   };
 
+  // Submit text note
+  const handleSubmitTextNote = useCallback(async () => {
+    if (!textNoteContent.trim()) return;
+
+    setIsSubmittingNote(true);
+    try {
+      const response = await fetch(
+        `/api/candidates/${candidateId}/stages/${stage}/attachments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: textNoteContent,
+            title: textNoteTitle || undefined,
+            type: selectedType,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setAttachments((prev) => [result.data, ...prev]);
+        setTextNoteContent("");
+        setTextNoteTitle("");
+        setShowTextInput(false);
+        setProcessingMessage("评审意见已保存");
+        setTimeout(() => setProcessingMessage(null), 2000);
+      } else {
+        setProcessingMessage("保存失败: " + (result.error || "未知错误"));
+        setTimeout(() => setProcessingMessage(null), 3000);
+      }
+    } catch (error) {
+      console.error("Failed to submit text note:", error);
+      setProcessingMessage("保存失败，请重试");
+      setTimeout(() => setProcessingMessage(null), 3000);
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  }, [candidateId, stage, selectedType, textNoteContent, textNoteTitle]);
+
   const isUploading = uploadingFiles.some((f) => f.status === "uploading" || f.status === "pending");
 
   return (
     <Card>
       <CardContent className="pt-6">
-        {/* Drop Zone */}
-        <div
-          className={`relative mb-4 border-2 border-dashed rounded-lg transition-all ${
-            isDragging
-              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-              : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600"
-          }`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          <div className="p-6 text-center">
-            <Upload
-              className={`w-10 h-10 mx-auto mb-3 ${
-                isDragging ? "text-blue-500" : "text-zinc-400"
-              }`}
-            />
-            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
-              {isDragging ? "松开鼠标上传文件" : "拖拽文件到此处，或"}
-            </p>
+        {/* Type selector and mode toggle */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedType}
+              onChange={(e) => {
+                setSelectedType(e.target.value);
+                setShowTextInput(false);
+              }}
+              className="px-3 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+            >
+              {attachmentTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
 
-            <div className="flex items-center justify-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-                disabled={isUploading}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    上传中...
-                  </>
-                ) : (
-                  "选择文件"
-                )}
-              </Button>
-
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="px-3 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-              >
-                {attachmentTypes.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <p className="text-xs text-zinc-500 mt-2">
-              支持批量上传多个文件
-            </p>
+            {supportsTextInput && (
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1">
+                <Button
+                  variant={!showTextInput ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowTextInput(false)}
+                  className="h-7 px-2"
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  文件
+                </Button>
+                <Button
+                  variant={showTextInput ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowTextInput(true)}
+                  className="h-7 px-2"
+                >
+                  <MessageSquare className="w-4 h-4 mr-1" />
+                  文字
+                </Button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Text Input Mode */}
+        {showTextInput ? (
+          <div className="mb-4 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
+            <input
+              type="text"
+              placeholder="标题 (可选)"
+              value={textNoteTitle}
+              onChange={(e) => setTextNoteTitle(e.target.value)}
+              className="w-full px-3 py-2 mb-3 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+            />
+            <textarea
+              placeholder="请输入评审意见..."
+              value={textNoteContent}
+              onChange={(e) => setTextNoteContent(e.target.value)}
+              rows={6}
+              className="w-full px-3 py-2 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 resize-none"
+            />
+            <div className="flex justify-end mt-3">
+              <Button
+                onClick={handleSubmitTextNote}
+                disabled={isSubmittingNote || !textNoteContent.trim()}
+                size="sm"
+              >
+                {isSubmittingNote ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    提交中...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    提交评审意见
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Drop Zone for File Upload */
+          <div
+            className={`relative mb-4 border-2 border-dashed rounded-lg transition-all ${
+              isDragging
+                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600"
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <div className="p-6 text-center">
+              <Upload
+                className={`w-10 h-10 mx-auto mb-3 ${
+                  isDragging ? "text-blue-500" : "text-zinc-400"
+                }`}
+              />
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
+                {isDragging ? "松开鼠标上传文件" : "拖拽文件到此处，或"}
+              </p>
+
+              <div className="flex items-center justify-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      上传中...
+                    </>
+                  ) : (
+                    "选择文件"
+                  )}
+                </Button>
+              </div>
+
+              <p className="text-xs text-zinc-500 mt-2">
+                支持批量上传多个文件
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Uploading Files Progress */}
         {uploadingFiles.length > 0 && (

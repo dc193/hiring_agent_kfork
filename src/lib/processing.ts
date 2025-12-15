@@ -172,38 +172,111 @@ export async function processJob(jobId: string): Promise<boolean> {
       const inputData = job.inputData as { outputType?: string } | null;
       const outputType = inputData?.outputType;
       if (config?.prompt) {
-        // Fetch file content if it's a text file
-        let content = "";
-        if (attachment.mimeType?.startsWith("text/")) {
+        // Replace variables in prompt (except {content} which might not be needed)
+        const basePrompt = config.prompt
+          .replace("{candidate_name}", candidate.name)
+          .replace("{stage}", job.pipelineStage)
+          .replace("{file_name}", attachment.fileName);
+
+        // Call Claude API
+        const anthropic = new Anthropic();
+        let message;
+
+        // Check if this is a PDF file - use document support
+        if (attachment.mimeType === "application/pdf") {
+          // Fetch PDF as base64
+          const response = await fetch(attachment.blobUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          const base64Data = Buffer.from(arrayBuffer).toString("base64");
+
+          // Use Claude's document support
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "document",
+                    source: {
+                      type: "base64",
+                      media_type: "application/pdf",
+                      data: base64Data,
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: basePrompt.replace("{content}", "请分析上面的PDF文档内容"),
+                  },
+                ],
+              },
+            ],
+          });
+        } else if (attachment.mimeType?.startsWith("text/") || attachment.mimeType === "application/json") {
+          // Text files - fetch and include content
+          let content = "";
           try {
             const response = await fetch(attachment.blobUrl);
             content = await response.text();
           } catch {
             content = "[无法读取文件内容]";
           }
+
+          const prompt = basePrompt.replace("{content}", content);
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          });
+        } else if (attachment.mimeType?.startsWith("image/")) {
+          // Image files - use vision support
+          const response = await fetch(attachment.blobUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          const base64Data = Buffer.from(arrayBuffer).toString("base64");
+
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: attachment.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                      data: base64Data,
+                    },
+                  },
+                  {
+                    type: "text",
+                    text: basePrompt.replace("{content}", "请分析上面的图片内容"),
+                  },
+                ],
+              },
+            ],
+          });
         } else {
-          content = "[非文本文件，请先转录]";
+          // Unsupported file type
+          const prompt = basePrompt.replace("{content}", `[文件类型: ${attachment.mimeType}，暂不支持直接分析，请先转换为PDF或文本格式]`);
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          });
         }
-
-        // Replace variables in prompt
-        const prompt = config.prompt
-          .replace("{candidate_name}", candidate.name)
-          .replace("{stage}", job.pipelineStage)
-          .replace("{file_name}", attachment.fileName)
-          .replace("{content}", content);
-
-        // Call Claude API
-        const anthropic = new Anthropic();
-        const message = await anthropic.messages.create({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4096,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-        });
 
         const analysisResult =
           message.content[0].type === "text" ? message.content[0].text : "";

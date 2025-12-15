@@ -70,47 +70,99 @@ export async function POST(
       );
     }
 
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const type = formData.get("type") as string || "other";
-    const description = formData.get("description") as string || null;
-    const uploadedBy = formData.get("uploadedBy") as string || null;
+    const contentType = request.headers.get("content-type") || "";
 
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: "No file provided" },
-        { status: 400 }
-      );
+    let attachment;
+    let fileType: string;
+    let mimeType: string;
+
+    // Check if this is a JSON request (text note) or form data (file upload)
+    if (contentType.includes("application/json")) {
+      // Text note submission
+      const body = await request.json();
+      const { text, title, type: noteType, uploadedBy } = body;
+
+      if (!text || !text.trim()) {
+        return NextResponse.json(
+          { success: false, error: "No text content provided" },
+          { status: 400 }
+        );
+      }
+
+      const fileName = title ? `${title}.md` : `评审意见_${new Date().toISOString().slice(0, 10)}.md`;
+      fileType = noteType || "note";
+      mimeType = "text/markdown";
+
+      // Create a blob from the text content
+      const textBlob = new Blob([text], { type: "text/markdown" });
+
+      // Upload to Vercel Blob
+      const blob = await put(`candidates/${id}/${stage}/${fileName}`, textBlob, {
+        access: "public",
+      });
+
+      // Save to database
+      [attachment] = await db
+        .insert(attachments)
+        .values({
+          candidateId: id,
+          pipelineStage: stage,
+          type: fileType,
+          fileName,
+          fileSize: textBlob.size,
+          mimeType,
+          blobUrl: blob.url,
+          description: text.slice(0, 200) + (text.length > 200 ? "..." : ""),
+          uploadedBy: uploadedBy || null,
+        })
+        .returning();
+    } else {
+      // File upload
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      const type = formData.get("type") as string || "other";
+      const description = formData.get("description") as string || null;
+      const uploadedBy = formData.get("uploadedBy") as string || null;
+
+      if (!file) {
+        return NextResponse.json(
+          { success: false, error: "No file provided" },
+          { status: 400 }
+        );
+      }
+
+      fileType = type;
+      mimeType = file.type;
+
+      // Upload to Vercel Blob
+      const blob = await put(`candidates/${id}/${stage}/${file.name}`, file, {
+        access: "public",
+      });
+
+      // Save to database
+      [attachment] = await db
+        .insert(attachments)
+        .values({
+          candidateId: id,
+          pipelineStage: stage,
+          type,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          blobUrl: blob.url,
+          description,
+          uploadedBy,
+        })
+        .returning();
     }
-
-    // Upload to Vercel Blob
-    const blob = await put(`candidates/${id}/${stage}/${file.name}`, file, {
-      access: "public",
-    });
-
-    // Save to database
-    const [attachment] = await db
-      .insert(attachments)
-      .values({
-        candidateId: id,
-        pipelineStage: stage,
-        type,
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-        blobUrl: blob.url,
-        description,
-        uploadedBy,
-      })
-      .returning();
 
     // Check for processing rules and create jobs
     const jobIds = await createProcessingJobs(
       attachment.id,
       id,
       stage,
-      file.type,
-      type
+      mimeType,
+      fileType
     );
 
     // Process jobs in background (non-blocking)

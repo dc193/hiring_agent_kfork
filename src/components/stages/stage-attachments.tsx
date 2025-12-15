@@ -75,7 +75,7 @@ function formatFileSize(bytes: number | null): string {
 }
 
 // Check if a type supports text input
-const TEXT_INPUT_TYPES = ["note", "评审意见"];
+const TEXT_INPUT_TYPES = ["note", "transcript", "评审意见", "转录文本", "面试笔记"];
 
 export function StageAttachments({
   candidateId,

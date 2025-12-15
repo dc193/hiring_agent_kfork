@@ -1,10 +1,28 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { db, candidates, attachments, interviewSessions, PIPELINE_STAGES } from "@/db";
+import { db, candidates, attachments, interviewSessions, PIPELINE_STAGES, Attachment, InterviewSession } from "@/db";
 import { eq, and, desc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
 import { StageAttachments } from "@/components/stages";
+
+// Safe query helper for tables that may not exist yet
+async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = []): Promise<T[]> {
+  try {
+    return await queryFn();
+  } catch (error) {
+    // Handle table/column not found errors
+    if (error && typeof error === "object" && "code" in error) {
+      const code = (error as { code: string }).code;
+      if (code === "42P01" || code === "42703") {
+        // 42P01: undefined_table, 42703: undefined_column
+        console.warn("Table or column not found, returning empty array");
+        return defaultValue;
+      }
+    }
+    throw error;
+  }
+}
 
 const STAGE_LABELS: Record<string, string> = {
   resume_review: "简历筛选",
@@ -82,29 +100,33 @@ export default async function StagePage({
     notFound();
   }
 
-  // Get attachments for this stage
-  const stageAttachments = await db
-    .select()
-    .from(attachments)
-    .where(
-      and(
-        eq(attachments.candidateId, id),
-        eq(attachments.pipelineStage, stage)
+  // Get attachments for this stage (with safe query for new columns)
+  const stageAttachments = await safeQuery<Attachment>(() =>
+    db
+      .select()
+      .from(attachments)
+      .where(
+        and(
+          eq(attachments.candidateId, id),
+          eq(attachments.pipelineStage, stage)
+        )
       )
-    )
-    .orderBy(desc(attachments.createdAt));
+      .orderBy(desc(attachments.createdAt))
+  );
 
-  // Get interview sessions for this stage
-  const stageSessions = await db
-    .select()
-    .from(interviewSessions)
-    .where(
-      and(
-        eq(interviewSessions.candidateId, id),
-        eq(interviewSessions.pipelineStage, stage)
+  // Get interview sessions for this stage (with safe query for new table)
+  const stageSessions = await safeQuery<InterviewSession>(() =>
+    db
+      .select()
+      .from(interviewSessions)
+      .where(
+        and(
+          eq(interviewSessions.candidateId, id),
+          eq(interviewSessions.pipelineStage, stage)
+        )
       )
-    )
-    .orderBy(desc(interviewSessions.scheduledAt));
+      .orderBy(desc(interviewSessions.scheduledAt))
+  );
 
   const currentStageIndex = PIPELINE_STAGES.indexOf(stage as typeof PIPELINE_STAGES[number]);
   const prevStage = currentStageIndex > 0 ? PIPELINE_STAGES[currentStageIndex - 1] : null;

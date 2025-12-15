@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Plus, Calendar, Users, Video, Phone, MapPin, Clock } from "lucide-react";
 import { db, interviewSessions, candidates, PIPELINE_STAGES, INTERVIEW_TYPES, INTERVIEW_SESSION_STATUSES } from "@/db";
 import { eq, desc } from "drizzle-orm";
@@ -126,7 +127,9 @@ export default async function InterviewsPage() {
       </div>
 
       {/* Filters */}
-      <InterviewFilters />
+      <Suspense fallback={<div className="mb-6 h-10" />}>
+        <InterviewFilters />
+      </Suspense>
 
       {/* Interviews List */}
       <Section title={`所有面试 (${interviews.length})`}>

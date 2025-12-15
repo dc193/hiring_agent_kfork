@@ -515,6 +515,83 @@ export const interviewTranscripts = pgTable("interview_transcripts", {
 });
 
 // ============================================
+// Table 18: pipeline_stage_configs (Pipeline阶段配置)
+// 配置每个阶段的自动处理规则
+// ============================================
+export const pipelineStageConfigs = pgTable("pipeline_stage_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stage: varchar("stage", { length: 50 }).notNull().unique(), // pipeline stage name
+
+  // 阶段基本信息
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  description: text("description"),
+  isActive: varchar("is_active", { length: 10 }).notNull().default("true"),
+
+  // 文件处理规则
+  processingRules: jsonb("processing_rules").$type<Array<{
+    fileType: string;           // recording, transcript, homework, etc.
+    autoTranscribe: boolean;    // 是否自动转录（针对音频/视频）
+    autoAnalyze: boolean;       // 是否自动AI分析
+    analysisPrompt: string;     // AI分析的 prompt
+    outputType: string;         // 输出类型: report, note, profile_update, preference_update
+    outputTemplate?: string;    // 输出模板（可选）
+  }>>().default([]),
+
+  // 默认分析 Prompt
+  defaultAnalysisPrompt: text("default_analysis_prompt"),
+
+  // 阶段特定的评估维度
+  evaluationDimensions: jsonb("evaluation_dimensions").$type<Array<{
+    name: string;
+    weight: number;
+    description?: string;
+  }>>().default([]),
+
+  // 问题库关联（该阶段推荐的问题类型）
+  recommendedQuestionCategories: jsonb("recommended_question_categories").$type<string[]>().default([]),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table 19: processing_jobs (处理任务队列)
+// 记录文件处理任务的状态
+// ============================================
+export const processingJobs = pgTable("processing_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attachmentId: uuid("attachment_id").notNull().references(() => attachments.id, { onDelete: "cascade" }),
+  candidateId: uuid("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
+  pipelineStage: varchar("pipeline_stage", { length: 50 }).notNull(),
+
+  // 任务类型
+  jobType: varchar("job_type", { length: 50 }).notNull(), // transcribe, analyze, generate_report
+
+  // 状态
+  status: varchar("status", { length: 50 }).notNull().default("pending"), // pending, processing, completed, failed
+  progress: integer("progress").default(0), // 0-100
+
+  // 输入输出
+  inputData: jsonb("input_data").$type<Record<string, unknown>>(),
+  outputData: jsonb("output_data").$type<Record<string, unknown>>(),
+  resultAttachmentId: uuid("result_attachment_id").references(() => attachments.id),
+
+  // 错误信息
+  errorMessage: text("error_message"),
+
+  // 配置
+  config: jsonb("config").$type<{
+    prompt?: string;
+    model?: string;
+    options?: Record<string, unknown>;
+  }>(),
+
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================
 // Bug status enum
 // ============================================
 export const BUG_STATUSES = [
@@ -649,3 +726,7 @@ export type InterviewEvaluation = typeof interviewEvaluations.$inferSelect;
 export type NewInterviewEvaluation = typeof interviewEvaluations.$inferInsert;
 export type InterviewTranscript = typeof interviewTranscripts.$inferSelect;
 export type NewInterviewTranscript = typeof interviewTranscripts.$inferInsert;
+export type PipelineStageConfig = typeof pipelineStageConfigs.$inferSelect;
+export type NewPipelineStageConfig = typeof pipelineStageConfigs.$inferInsert;
+export type ProcessingJob = typeof processingJobs.$inferSelect;
+export type NewProcessingJob = typeof processingJobs.$inferInsert;

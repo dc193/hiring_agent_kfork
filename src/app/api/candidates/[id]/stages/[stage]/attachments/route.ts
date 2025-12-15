@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, attachments, candidates, PIPELINE_STAGES } from "@/db";
 import { eq, and, desc } from "drizzle-orm";
 import { put, del } from "@vercel/blob";
+import { createProcessingJobs, processAttachmentJobs } from "@/lib/processing";
 
 // GET /api/candidates/[id]/stages/[stage]/attachments
 export async function GET(
@@ -103,7 +104,28 @@ export async function POST(
       })
       .returning();
 
-    return NextResponse.json({ success: true, data: attachment });
+    // Check for processing rules and create jobs
+    const jobIds = await createProcessingJobs(
+      attachment.id,
+      id,
+      stage,
+      file.type,
+      type
+    );
+
+    // Process jobs in background (non-blocking)
+    if (jobIds.length > 0) {
+      // Don't await - let it run in background
+      processAttachmentJobs(attachment.id).catch((error) => {
+        console.error("Background processing failed:", error);
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: attachment,
+      processingJobs: jobIds.length > 0 ? jobIds : undefined,
+    });
   } catch (error) {
     console.error("Failed to upload attachment:", error);
     return NextResponse.json(

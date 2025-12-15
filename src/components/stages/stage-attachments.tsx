@@ -13,6 +13,9 @@ import {
   Plus,
   X,
   Loader2,
+  Sparkles,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +73,72 @@ export function StageAttachments({
   const [selectedType, setSelectedType] = useState(attachmentTypes[0]?.value || "other");
   const [description, setDescription] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [processingAttachments, setProcessingAttachments] = useState<Set<string>>(new Set());
+  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
+
+  // Poll for processing job status
+  const pollProcessingStatus = async (attachmentId: string) => {
+    const maxAttempts = 60; // Poll for up to 5 minutes
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/processing/jobs?attachmentId=${attachmentId}`);
+        const result = await response.json();
+
+        if (result.success && result.data.length > 0) {
+          const jobs = result.data;
+          const pendingOrProcessing = jobs.some(
+            (j: { job: { status: string } }) =>
+              j.job.status === "pending" || j.job.status === "processing"
+          );
+          const hasCompleted = jobs.some(
+            (j: { job: { status: string } }) => j.job.status === "completed"
+          );
+          const hasFailed = jobs.some(
+            (j: { job: { status: string } }) => j.job.status === "failed"
+          );
+
+          if (!pendingOrProcessing) {
+            // Processing complete
+            setProcessingAttachments((prev) => {
+              const next = new Set(prev);
+              next.delete(attachmentId);
+              return next;
+            });
+
+            if (hasCompleted) {
+              setProcessingMessage("AI分析完成！正在刷新附件列表...");
+              // Refresh attachments list
+              setTimeout(() => {
+                router.refresh();
+                setProcessingMessage(null);
+              }, 1500);
+            } else if (hasFailed) {
+              setProcessingMessage("处理失败，请检查处理任务详情");
+              setTimeout(() => setProcessingMessage(null), 3000);
+            }
+            return;
+          }
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000); // Poll every 5 seconds
+        } else {
+          setProcessingAttachments((prev) => {
+            const next = new Set(prev);
+            next.delete(attachmentId);
+            return next;
+          });
+        }
+      } catch (error) {
+        console.error("Error polling processing status:", error);
+      }
+    };
+
+    poll();
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,6 +169,13 @@ export function StageAttachments({
         setSelectedType(attachmentTypes[0]?.value || "other");
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
+        }
+
+        // Check if processing jobs were created
+        if (result.processingJobs && result.processingJobs.length > 0) {
+          setProcessingAttachments((prev) => new Set([...prev, result.data.id]));
+          setProcessingMessage("文件已上传，正在进行AI分析...");
+          pollProcessingStatus(result.data.id);
         }
       } else {
         alert(result.error || "Upload failed");
@@ -227,6 +303,16 @@ export function StageAttachments({
           )}
         </div>
 
+        {/* Processing Message */}
+        {processingMessage && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-pulse" />
+            <span className="text-sm text-blue-700 dark:text-blue-300">
+              {processingMessage}
+            </span>
+          </div>
+        )}
+
         {/* Attachments List */}
         {attachments.length === 0 ? (
           <div className="text-center py-8 text-zinc-500">
@@ -239,6 +325,7 @@ export function StageAttachments({
             {attachments.map((attachment) => {
               const Icon = TYPE_ICONS[attachment.type] || File;
               const isDeleting = deletingId === attachment.id;
+              const isProcessing = processingAttachments.has(attachment.id);
 
               return (
                 <div
@@ -257,6 +344,12 @@ export function StageAttachments({
                       <Badge variant="secondary" className="text-xs">
                         {getTypeLabel(attachment.type)}
                       </Badge>
+                      {isProcessing && (
+                        <Badge variant="outline" className="text-xs flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                          <Sparkles className="w-3 h-3 animate-pulse" />
+                          AI分析中
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
                       {attachment.fileSize && (

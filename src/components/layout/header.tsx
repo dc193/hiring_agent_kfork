@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { FileText, Users, MessageSquare } from "lucide-react"
+import { FileText, Users, MessageSquare, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/", label: "Resume Parser", icon: FileText },
   { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/interviews", label: "Interviews", icon: MessageSquare },
+  { href: "/settings", label: "Settings", icon: Settings },
 ]
 
 export function Header() {

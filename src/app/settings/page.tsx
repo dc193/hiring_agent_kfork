@@ -3,6 +3,10 @@ import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { Settings as SettingsIcon } from "lucide-react";
 import { StageConfigList } from "@/components/settings/stage-config-list";
 
+// Force dynamic rendering - don't cache this page
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Safe query helper for tables that may not exist yet
 async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = []): Promise<T[]> {
   try {
@@ -60,10 +64,17 @@ export default async function SettingsPage() {
     db.select().from(pipelineStageConfigs)
   );
 
+  // Debug: log what we got from the database
+  console.log("Existing configs from DB:", existingConfigs.length, "items");
+  existingConfigs.forEach((c) => {
+    console.log(`  - ${c.stage}: ${c.processingRules?.length || 0} rules`);
+  });
+
   // Merge existing configs with defaults, ensuring null arrays are converted to empty arrays
   const stageConfigs = PIPELINE_STAGES.map((stage) => {
     const existing = existingConfigs.find((c) => c.stage === stage);
     if (existing) {
+      console.log(`Found existing config for ${stage}, rules:`, existing.processingRules);
       return {
         ...existing,
         processingRules: existing.processingRules || [],
@@ -71,6 +82,7 @@ export default async function SettingsPage() {
         recommendedQuestionCategories: existing.recommendedQuestionCategories || [],
       };
     }
+    console.log(`No existing config for ${stage}, using default`);
     return DEFAULT_STAGE_CONFIGS.find((c) => c.stage === stage)!;
   });
 

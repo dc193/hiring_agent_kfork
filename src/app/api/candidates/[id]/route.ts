@@ -129,3 +129,40 @@ export async function PATCH(
     );
   }
 }
+
+// DELETE /api/candidates/[id] - Delete a candidate and all related data
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    // Check if candidate exists
+    const [candidate] = await db
+      .select()
+      .from(candidates)
+      .where(eq(candidates.id, id));
+
+    if (!candidate) {
+      return NextResponse.json(
+        { success: false, error: "Candidate not found" },
+        { status: 404 }
+      );
+    }
+
+    // Delete candidate (cascade will delete all related data)
+    await db.delete(candidates).where(eq(candidates.id, id));
+
+    return NextResponse.json({
+      success: true,
+      message: `Candidate "${candidate.name}" and all related data have been deleted`,
+    });
+  } catch (error) {
+    console.error("Failed to delete candidate:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to delete candidate" },
+      { status: 500 }
+    );
+  }
+}

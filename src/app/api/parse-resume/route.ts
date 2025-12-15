@@ -147,24 +147,31 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     // ============================================
     // Save to database
     // ============================================
+    let candidateId: string;
 
-    // 1. Create candidate record
-    const [newCandidate] = await db.insert(candidates).values({
-      name: parsedData.basicInfo?.name || "Unknown",
-      email: parsedData.basicInfo?.email || null,
-      phone: parsedData.basicInfo?.phone || null,
-      location: parsedData.basicInfo?.location || null,
-      linkedin: parsedData.basicInfo?.linkedin || null,
-      github: parsedData.basicInfo?.github || null,
-      website: parsedData.basicInfo?.website || null,
-      summary: parsedData.summary || null,
-      skills: parsedData.skills || [],
-      resumeRawText: textContent,
-      status: "active",
-      pipelineStage: "resume_review",
-    }).returning();
+    try {
+      // 1. Create candidate record
+      const [newCandidate] = await db.insert(candidates).values({
+        name: parsedData.basicInfo?.name || "Unknown",
+        email: parsedData.basicInfo?.email || null,
+        phone: parsedData.basicInfo?.phone || null,
+        location: parsedData.basicInfo?.location || null,
+        linkedin: parsedData.basicInfo?.linkedin || null,
+        github: parsedData.basicInfo?.github || null,
+        website: parsedData.basicInfo?.website || null,
+        summary: parsedData.summary || null,
+        skills: parsedData.skills || [],
+        resumeRawText: textContent,
+        status: "active",
+        pipelineStage: "resume_review",
+      }).returning();
 
-    const candidateId = newCandidate.id;
+      candidateId = newCandidate.id;
+      console.log("Created candidate:", candidateId);
+    } catch (dbError) {
+      console.error("Database insert error:", dbError);
+      throw new Error(`Failed to save candidate to database: ${dbError instanceof Error ? dbError.message : "Unknown error"}`);
+    }
 
     // 2. Save work experiences
     if (parsedData.workExperience && parsedData.workExperience.length > 0) {

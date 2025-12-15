@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Users, Upload } from "lucide-react";
 import { db, candidates } from "@/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StatusFilter } from "@/components/candidates/status-filter";
 
 const STAGE_LABELS: Record<string, string> = {
   resume_review: "简历筛选",
@@ -35,11 +36,28 @@ const STAGE_VARIANTS: Record<string, BadgeVariant> = {
   offer: "success",
 };
 
-export default async function CandidatesPage() {
-  const allCandidates = await db
-    .select()
-    .from(candidates)
-    .orderBy(desc(candidates.createdAt));
+export default async function CandidatesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const params = await searchParams;
+  const statusFilter = params.status || "active";
+
+  // Build query based on status filter
+  let allCandidates;
+  if (statusFilter === "all") {
+    allCandidates = await db
+      .select()
+      .from(candidates)
+      .orderBy(desc(candidates.createdAt));
+  } else {
+    allCandidates = await db
+      .select()
+      .from(candidates)
+      .where(eq(candidates.status, statusFilter))
+      .orderBy(desc(candidates.createdAt));
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
@@ -58,14 +76,23 @@ export default async function CandidatesPage() {
           </Button>
         </div>
 
+        {/* Status Filter */}
+        <div className="mb-6">
+          <StatusFilter />
+        </div>
+
         {allCandidates.length === 0 ? (
           <Card>
             <CardContent className="text-center py-16">
               <Users className="w-16 h-16 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
-              <p className="text-zinc-500 dark:text-zinc-400 mb-4">No candidates yet</p>
-              <Link href="/" className="text-blue-500 hover:underline">
-                Upload your first resume
-              </Link>
+              <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                {statusFilter === "all" ? "No candidates yet" : `No ${statusFilter} candidates`}
+              </p>
+              {statusFilter === "active" && (
+                <Link href="/" className="text-blue-500 hover:underline">
+                  Upload your first resume
+                </Link>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -74,6 +101,7 @@ export default async function CandidatesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Candidate</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Stage</TableHead>
                   <TableHead>Skills</TableHead>
                   <TableHead>Added</TableHead>
@@ -82,7 +110,7 @@ export default async function CandidatesPage() {
               </TableHeader>
               <TableBody>
                 {allCandidates.map((candidate) => (
-                  <TableRow key={candidate.id}>
+                  <TableRow key={candidate.id} className={candidate.status === "archived" ? "opacity-60" : ""}>
                     <TableCell>
                       <div>
                         <div className="font-medium text-zinc-900 dark:text-zinc-100">
@@ -92,6 +120,11 @@ export default async function CandidatesPage() {
                           {candidate.email || "No email"}
                         </div>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={candidate.status === "active" ? "success" : "secondary"}>
+                        {candidate.status}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={STAGE_VARIANTS[candidate.pipelineStage] || "secondary"}>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences } from "@/db";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences, CANDIDATE_STATUSES } from "@/db";
 import { eq } from "drizzle-orm";
 
+// GET /api/candidates/[id] - Get a single candidate
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,6 +47,57 @@ export async function GET(
     console.error("Failed to fetch candidate:", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch candidate" },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/candidates/[id] - Update candidate status
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const { status } = body;
+
+    // Validate status
+    if (!status || !CANDIDATE_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${CANDIDATE_STATUSES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    // Check if candidate exists
+    const [candidate] = await db
+      .select()
+      .from(candidates)
+      .where(eq(candidates.id, id));
+
+    if (!candidate) {
+      return NextResponse.json(
+        { success: false, error: "Candidate not found" },
+        { status: 404 }
+      );
+    }
+
+    // Update status
+    const [updated] = await db
+      .update(candidates)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(candidates.id, id))
+      .returning();
+
+    return NextResponse.json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    console.error("Failed to update candidate:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to update candidate" },
       { status: 500 }
     );
   }

@@ -7,6 +7,7 @@ import { Header, Footer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CandidateActions } from "@/components/candidates/candidate-actions";
 
 const STAGE_LABELS: Record<string, string> = {
   resume_review: "简历筛选",
@@ -106,10 +107,14 @@ export default async function CandidateDetailPage({
                   )}
                 </div>
               </div>
-              <div className="text-right">
+              <div className="flex flex-col items-end gap-2">
                 <span className="text-xs text-zinc-400 dark:text-zinc-500">
                   ID: {candidate.id.slice(0, 8)}
                 </span>
+                {candidate.status === "archived" && (
+                  <Badge variant="secondary">Archived</Badge>
+                )}
+                <CandidateActions candidateId={candidate.id} currentStatus={candidate.status} />
               </div>
             </div>
 

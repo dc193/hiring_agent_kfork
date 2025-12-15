@@ -285,6 +285,107 @@ export const candidatePreferences = pgTable("candidate_preferences", {
 });
 
 // ============================================
+// Bug status enum
+// ============================================
+export const BUG_STATUSES = [
+  "open",       // 待处理
+  "confirmed",  // 已确认
+  "in_progress", // 修复中
+  "fixed",      // 已修复
+  "wont_fix",   // 不修复
+  "duplicate",  // 重复
+] as const;
+
+export type BugStatus = typeof BUG_STATUSES[number];
+
+// ============================================
+// Bug priority enum
+// ============================================
+export const BUG_PRIORITIES = [
+  "critical",   // 严重
+  "high",       // 高
+  "medium",     // 中
+  "low",        // 低
+] as const;
+
+export type BugPriority = typeof BUG_PRIORITIES[number];
+
+// ============================================
+// Feature request status enum
+// ============================================
+export const FEATURE_STATUSES = [
+  "proposed",     // 提议中
+  "under_review", // 评审中
+  "planned",      // 已计划
+  "in_progress",  // 开发中
+  "completed",    // 已完成
+  "rejected",     // 已拒绝
+] as const;
+
+export type FeatureStatus = typeof FEATURE_STATUSES[number];
+
+// ============================================
+// Table 10: bug_reports (Bug报告)
+// ============================================
+export const bugReports = pgTable("bug_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  stepsToReproduce: text("steps_to_reproduce"),
+  expectedBehavior: text("expected_behavior"),
+  actualBehavior: text("actual_behavior"),
+  status: varchar("status", { length: 50 }).notNull().default("open"),
+  priority: varchar("priority", { length: 50 }).default("medium"),
+  reportedBy: varchar("reported_by", { length: 255 }),
+  assignedTo: varchar("assigned_to", { length: 255 }),
+
+  // AI分析字段
+  aiAnalysis: text("ai_analysis"),
+  aiSuggestedFix: text("ai_suggested_fix"),
+  relatedFiles: jsonb("related_files").$type<string[]>().default([]),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table 11: feature_requests (功能建议)
+// ============================================
+export const featureRequests = pgTable("feature_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  useCase: text("use_case"),  // 使用场景
+  status: varchar("status", { length: 50 }).notNull().default("proposed"),
+  priority: varchar("priority", { length: 50 }).default("medium"),
+  requestedBy: varchar("requested_by", { length: 255 }),
+  votes: integer("votes").notNull().default(0),
+
+  // AI分析字段
+  aiAnalysis: text("ai_analysis"),
+  aiImplementationPlan: text("ai_implementation_plan"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table 12: roadmap_items (路线图)
+// ============================================
+export const roadmapItems = pgTable("roadmap_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  version: varchar("version", { length: 50 }).notNull(),  // e.g., "v0.1", "v0.2"
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 50 }).notNull().default("planned"), // planned/in_progress/completed
+  features: jsonb("features").$type<string[]>().default([]),
+  targetDate: timestamp("target_date"),
+  completedDate: timestamp("completed_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // Type exports for use in application
 // ============================================
 export type Candidate = typeof candidates.$inferSelect;
@@ -302,3 +403,9 @@ export type CandidateProfile = typeof candidateProfiles.$inferSelect;
 export type NewCandidateProfile = typeof candidateProfiles.$inferInsert;
 export type CandidatePreference = typeof candidatePreferences.$inferSelect;
 export type NewCandidatePreference = typeof candidatePreferences.$inferInsert;
+export type BugReport = typeof bugReports.$inferSelect;
+export type NewBugReport = typeof bugReports.$inferInsert;
+export type FeatureRequest = typeof featureRequests.$inferSelect;
+export type NewFeatureRequest = typeof featureRequests.$inferInsert;
+export type RoadmapItem = typeof roadmapItems.$inferSelect;
+export type NewRoadmapItem = typeof roadmapItems.$inferInsert;

@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Plus, Calendar, Users, Video, Phone, MapPin, Clock } from "lucide-react";
-import { db, interviewSessions, candidates, PIPELINE_STAGES, INTERVIEW_TYPES, INTERVIEW_SESSION_STATUSES } from "@/db";
+import { Calendar, Users, Video, Phone, MapPin, Clock } from "lucide-react";
+import { db, interviewSessions, candidates, INTERVIEW_SESSION_STATUSES } from "@/db";
 import { eq, desc } from "drizzle-orm";
-import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
+import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { InterviewFilters, CreateInterviewModal } from "@/components/interviews";
+
+// Force dynamic rendering - don't cache this page
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const TYPE_ICONS: Record<string, typeof Video> = {
   phone_screen: Phone,
@@ -66,7 +70,7 @@ export default async function InterviewsPage() {
     })
     .from(interviewSessions)
     .leftJoin(candidates, eq(interviewSessions.candidateId, candidates.id))
-    .orderBy(desc(interviewSessions.scheduledAt));
+    .orderBy(desc(interviewSessions.createdAt));
 
   // Fetch all candidates for the create modal
   const allCandidates = await db

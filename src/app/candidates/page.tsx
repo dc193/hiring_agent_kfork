@@ -2,39 +2,25 @@ import Link from "next/link";
 import { Users, Upload } from "lucide-react";
 import { db, candidates } from "@/db";
 import { desc, eq } from "drizzle-orm";
-import { Header, Footer } from "@/components/layout";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
+  PageLayout,
+  PageHeader,
+  EmptyState,
+  Card,
+  Button,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { StatusFilter } from "@/components/candidates/status-filter";
-
-const STAGE_LABELS: Record<string, string> = {
-  resume_review: "简历筛选",
-  phone_screen: "电话面试",
-  homework: "作业",
-  team_interview: "Team 面试",
-  final_interview: "终面",
-  offer: "Offer",
-};
-
-type BadgeVariant = "secondary" | "info" | "warning" | "purple" | "destructive" | "success";
-
-const STAGE_VARIANTS: Record<string, BadgeVariant> = {
-  resume_review: "secondary",
-  phone_screen: "info",
-  homework: "warning",
-  team_interview: "purple",
-  final_interview: "destructive",
-  offer: "success",
-};
+} from "@/components/ui";
+import {
+  StatusFilter,
+  StatusBadge,
+  StageBadge,
+  SkillsList,
+} from "@/components/candidates";
 
 export default async function CandidatesPage({
   searchParams,
@@ -60,108 +46,91 @@ export default async function CandidatesPage({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
-      <Header />
+    <PageLayout>
+      <PageHeader title="Candidates" count={allCandidates.length}>
+        <Button asChild>
+          <Link href="/">
+            <Upload className="w-4 h-4" />
+            Upload Resume
+          </Link>
+        </Button>
+      </PageHeader>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 flex-1 w-full">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-            Candidates ({allCandidates.length})
-          </h2>
-          <Button asChild>
-            <Link href="/">
-              <Upload className="w-4 h-4" />
-              Upload Resume
+      <div className="mb-6">
+        <StatusFilter />
+      </div>
+
+      {allCandidates.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          message={statusFilter === "all" ? "No candidates yet" : `No ${statusFilter} candidates`}
+        >
+          {statusFilter === "active" && (
+            <Link href="/" className="text-blue-500 hover:underline">
+              Upload your first resume
             </Link>
-          </Button>
-        </div>
-
-        {/* Status Filter */}
-        <div className="mb-6">
-          <StatusFilter />
-        </div>
-
-        {allCandidates.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-16">
-              <Users className="w-16 h-16 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
-              <p className="text-zinc-500 dark:text-zinc-400 mb-4">
-                {statusFilter === "all" ? "No candidates yet" : `No ${statusFilter} candidates`}
-              </p>
-              {statusFilter === "active" && (
-                <Link href="/" className="text-blue-500 hover:underline">
-                  Upload your first resume
-                </Link>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead>Skills</TableHead>
-                  <TableHead>Added</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+          )}
+        </EmptyState>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Candidate</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Stage</TableHead>
+                <TableHead>Skills</TableHead>
+                <TableHead>Added</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allCandidates.map((candidate) => (
+                <TableRow
+                  key={candidate.id}
+                  className={candidate.status === "archived" ? "opacity-60" : ""}
+                >
+                  <TableCell>
+                    <CandidateCell name={candidate.name} email={candidate.email} />
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={candidate.status} />
+                  </TableCell>
+                  <TableCell>
+                    <StageBadge stage={candidate.pipelineStage} />
+                  </TableCell>
+                  <TableCell>
+                    <SkillsList
+                      skills={(candidate.skills as string[]) || []}
+                      maxDisplay={3}
+                      variant="compact"
+                    />
+                  </TableCell>
+                  <TableCell className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {new Date(candidate.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/candidates/${candidate.id}`}>View</Link>
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allCandidates.map((candidate) => (
-                  <TableRow key={candidate.id} className={candidate.status === "archived" ? "opacity-60" : ""}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                          {candidate.name}
-                        </div>
-                        <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                          {candidate.email || "No email"}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={candidate.status === "active" ? "success" : "secondary"}>
-                        {candidate.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STAGE_VARIANTS[candidate.pipelineStage] || "secondary"}>
-                        {STAGE_LABELS[candidate.pipelineStage] || candidate.pipelineStage}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {((candidate.skills as string[]) || []).slice(0, 3).map((skill, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
-                            {skill}
-                          </Badge>
-                        ))}
-                        {((candidate.skills as string[]) || []).length > 3 && (
-                          <span className="text-xs text-zinc-400">
-                            +{((candidate.skills as string[]) || []).length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {new Date(candidate.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/candidates/${candidate.id}`}>View</Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-        )}
-      </main>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </PageLayout>
+  );
+}
 
-      <Footer />
+function CandidateCell({ name, email }: { name: string; email: string | null }) {
+  return (
+    <div>
+      <div className="font-medium text-zinc-900 dark:text-zinc-100">{name}</div>
+      <div className="text-sm text-zinc-500 dark:text-zinc-400">
+        {email || "No email"}
+      </div>
     </div>
   );
 }

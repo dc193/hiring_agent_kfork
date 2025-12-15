@@ -1,12 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Heart } from "lucide-react";
+import { Heart } from "lucide-react";
 import { db, candidates, candidatePreferences } from "@/db";
 import { eq } from "drizzle-orm";
-import { Header, Footer } from "@/components/layout";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageLayout, BackLink, Section, EmptyState, Badge, DataGrid, DataGridItem } from "@/components/ui";
+import { SummaryCard, SubPageHeader } from "@/components/profile";
 
 const RISK_ATTITUDE_LABELS: Record<string, string> = {
   aggressive: "激进",
@@ -47,344 +44,236 @@ export default async function CandidatePreferencesPage({
     .where(eq(candidatePreferences.candidateId, id));
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col">
-      <Header />
+    <PageLayout>
+      <BackLink href={`/candidates/${id}`} label={`Back to ${candidate.name}`} />
 
-      <main className="max-w-6xl mx-auto px-6 py-8 flex-1 w-full">
-        {/* Back Link */}
-        <Button variant="ghost" size="sm" asChild className="mb-6 -ml-2">
-          <Link href={`/candidates/${id}`}>
-            <ChevronLeft className="w-4 h-4" />
-            Back to {candidate.name}
-          </Link>
-        </Button>
+      <SubPageHeader
+        title="Preferences (偏好画像)"
+        subtitle={`${candidate.name} - 他要什么、会做什么`}
+        candidateId={id}
+        activeTab="preferences"
+      />
 
-        {/* Page Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-              Preferences (偏好画像)
-            </h1>
-            <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-              {candidate.name} - 他要什么、会做什么
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link href={`/candidates/${id}/profile`}>Profile</Link>
-            </Button>
-            <Button asChild>
-              <Link href={`/candidates/${id}/preferences`}>Preferences</Link>
-            </Button>
+      {!preferences ? (
+        <EmptyState icon={Heart} message="No preference data yet">
+          <p className="text-sm">
+            Preference information will be gathered through interviews and assessments.
+          </p>
+        </EmptyState>
+      ) : (
+        <div className="space-y-6">
+          {preferences.preferenceSummary && (
+            <SummaryCard
+              title="AI Summary"
+              summary={preferences.preferenceSummary}
+              variant="purple"
+            />
+          )}
+
+          <Section title="价值排序">
+            <ValueRanking values={(preferences.valueRanking as Array<{ value: string; rank: number }>) || []} />
+          </Section>
+
+          <Section title="动机结构">
+            <MotivationStructure motivation={preferences.motivation as { intrinsic?: string[]; extrinsic?: string[]; balance?: string } | null} />
+          </Section>
+
+          <Section title="目标图景">
+            <GoalsDisplay goals={preferences.goals as { shortTerm?: string; midTerm?: string; longTerm?: string } | null} />
+          </Section>
+
+          <Section title="风险态度">
+            <div className="grid grid-cols-2 gap-4">
+              <DataGridItem label="Risk Attitude">
+                {preferences.riskAttitude ? RISK_ATTITUDE_LABELS[preferences.riskAttitude] || preferences.riskAttitude : "Not set"}
+              </DataGridItem>
+              {preferences.riskDetails && Object.entries(preferences.riskDetails as Record<string, string>).map(([key, value]) => (
+                value && (
+                  <DataGridItem key={key} label={formatLabel(key)}>
+                    {value}
+                  </DataGridItem>
+                )
+              ))}
+            </div>
+          </Section>
+
+          <Section title="认知偏好">
+            {preferences.cognitiveStyle ? (
+              <DataGrid data={preferences.cognitiveStyle as Record<string, string>} />
+            ) : (
+              <EmptyText>No cognitive style data recorded</EmptyText>
+            )}
+          </Section>
+
+          <Section title="关系偏好">
+            {preferences.relationshipStyle ? (
+              <DataGrid data={preferences.relationshipStyle as Record<string, string>} />
+            ) : (
+              <EmptyText>No relationship style data recorded</EmptyText>
+            )}
+          </Section>
+
+          <Section title="成长偏好">
+            {preferences.growthStyle ? (
+              <DataGrid data={preferences.growthStyle as Record<string, string>} />
+            ) : (
+              <EmptyText>No growth style data recorded</EmptyText>
+            )}
+          </Section>
+
+          <Section title="边界与底线">
+            <BoundariesDisplay boundaries={preferences.boundaries as {
+              moralBoundaries?: string;
+              professionalPrinciples?: string;
+              nonNegotiables?: string[];
+              triggers?: string[];
+            } | null} />
+          </Section>
+        </div>
+      )}
+    </PageLayout>
+  );
+}
+
+function EmptyText({ children }: { children: string }) {
+  return <p className="text-zinc-400 dark:text-zinc-500 text-sm">{children}</p>;
+}
+
+function formatLabel(key: string): string {
+  return key.replace(/([A-Z])/g, " $1").trim();
+}
+
+function ValueRanking({ values }: { values: Array<{ value: string; rank: number }> }) {
+  if (values.length === 0) {
+    return <EmptyText>No value ranking recorded</EmptyText>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {values.sort((a, b) => a.rank - b.rank).map((item, i) => (
+        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
+          <Badge variant="purple" className="w-6 h-6 rounded-full flex items-center justify-center p-0">
+            {item.rank}
+          </Badge>
+          <span className="text-zinc-700 dark:text-zinc-300">
+            {VALUE_LABELS[item.value] || item.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MotivationStructure({ motivation }: { motivation: { intrinsic?: string[]; extrinsic?: string[]; balance?: string } | null }) {
+  if (!motivation) {
+    return <EmptyText>No motivation data recorded</EmptyText>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {motivation.intrinsic && motivation.intrinsic.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">内驱动因</h3>
+          <div className="flex flex-wrap gap-2">
+            {motivation.intrinsic.map((item, i) => (
+              <Badge key={i} variant="success">{item}</Badge>
+            ))}
           </div>
         </div>
-
-        {!preferences ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Heart className="w-16 h-16 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-zinc-900 dark:text-zinc-100 mb-2">
-                No preference data yet
-              </h3>
-              <p className="text-zinc-500 dark:text-zinc-400 mb-4">
-                Preference information will be gathered through interviews and assessments.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {/* Preference Summary */}
-            {preferences.preferenceSummary && (
-              <Card className="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wide">
-                    AI Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-zinc-700 dark:text-zinc-300">{preferences.preferenceSummary}</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Value Ranking */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  价值排序
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {((preferences.valueRanking as Array<{value: string; rank: number}>) || []).length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {((preferences.valueRanking as Array<{value: string; rank: number}>) || [])
-                      .sort((a, b) => a.rank - b.rank)
-                      .map((item, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
-                          <Badge variant="purple" className="w-6 h-6 rounded-full flex items-center justify-center p-0">
-                            {item.rank}
-                          </Badge>
-                          <span className="text-zinc-700 dark:text-zinc-300">
-                            {VALUE_LABELS[item.value] || item.value}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No value ranking recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Motivation Structure */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  动机结构
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.motivation ? (
-                  <div className="space-y-4">
-                    {(preferences.motivation as { intrinsic?: string[]; extrinsic?: string[]; balance?: string }).intrinsic && (
-                      <div>
-                        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">内驱动因</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {((preferences.motivation as { intrinsic?: string[] }).intrinsic || []).map((item, i) => (
-                            <Badge key={i} variant="success">
-                              {item}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {(preferences.motivation as { extrinsic?: string[] }).extrinsic && (
-                      <div>
-                        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">外驱动因</h3>
-                        <div className="flex flex-wrap gap-2">
-                          {((preferences.motivation as { extrinsic?: string[] }).extrinsic || []).map((item, i) => (
-                            <Badge key={i} variant="info">
-                              {item}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {(preferences.motivation as { balance?: string }).balance && (
-                      <div>
-                        <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">内外平衡</h3>
-                        <p className="text-zinc-600 dark:text-zinc-400">{(preferences.motivation as { balance?: string }).balance}</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No motivation data recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Goals */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  目标图景
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.goals ? (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {(preferences.goals as { shortTerm?: string }).shortTerm && (
-                      <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">短期 (1年内)</span>
-                        <p className="mt-1 text-zinc-900 dark:text-zinc-100">{(preferences.goals as { shortTerm?: string }).shortTerm}</p>
-                      </div>
-                    )}
-                    {(preferences.goals as { midTerm?: string }).midTerm && (
-                      <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">中期 (3-5年)</span>
-                        <p className="mt-1 text-zinc-900 dark:text-zinc-100">{(preferences.goals as { midTerm?: string }).midTerm}</p>
-                      </div>
-                    )}
-                    {(preferences.goals as { longTerm?: string }).longTerm && (
-                      <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">长期 (10年+)</span>
-                        <p className="mt-1 text-zinc-900 dark:text-zinc-100">{(preferences.goals as { longTerm?: string }).longTerm}</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No goals recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Risk Attitude */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  风险态度
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">Risk Attitude</span>
-                    <p className="font-medium text-zinc-900 dark:text-zinc-100">
-                      {preferences.riskAttitude ? RISK_ATTITUDE_LABELS[preferences.riskAttitude] || preferences.riskAttitude : "Not set"}
-                    </p>
-                  </div>
-                  {preferences.riskDetails && Object.entries(preferences.riskDetails as Record<string, string>).map(([key, value]) => (
-                    value && (
-                      <div key={key}>
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400 capitalize">
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
-                        </span>
-                        <p className="font-medium text-zinc-900 dark:text-zinc-100">{value}</p>
-                      </div>
-                    )
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Cognitive Style */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  认知偏好
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.cognitiveStyle ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(preferences.cognitiveStyle as Record<string, string>).map(([key, value]) => (
-                      value && (
-                        <div key={key}>
-                          <span className="text-sm text-zinc-500 dark:text-zinc-400 capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                          </span>
-                          <p className="font-medium text-zinc-900 dark:text-zinc-100">{value}</p>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No cognitive style data recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Relationship Style */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  关系偏好
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.relationshipStyle ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(preferences.relationshipStyle as Record<string, string>).map(([key, value]) => (
-                      value && (
-                        <div key={key}>
-                          <span className="text-sm text-zinc-500 dark:text-zinc-400 capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                          </span>
-                          <p className="font-medium text-zinc-900 dark:text-zinc-100">{value}</p>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No relationship style data recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Growth Style */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  成长偏好
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.growthStyle ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(preferences.growthStyle as Record<string, string>).map(([key, value]) => (
-                      value && (
-                        <div key={key}>
-                          <span className="text-sm text-zinc-500 dark:text-zinc-400 capitalize">
-                            {key.replace(/([A-Z])/g, ' $1').trim()}
-                          </span>
-                          <p className="font-medium text-zinc-900 dark:text-zinc-100">{value}</p>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No growth style data recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Boundaries */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                  边界与底线
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {preferences.boundaries ? (
-                  <div className="space-y-4">
-                    {(preferences.boundaries as { moralBoundaries?: string }).moralBoundaries && (
-                      <div>
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400">道德底线</span>
-                        <p className="font-medium text-zinc-900 dark:text-zinc-100">{(preferences.boundaries as { moralBoundaries?: string }).moralBoundaries}</p>
-                      </div>
-                    )}
-                    {(preferences.boundaries as { professionalPrinciples?: string }).professionalPrinciples && (
-                      <div>
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400">职业原则</span>
-                        <p className="font-medium text-zinc-900 dark:text-zinc-100">{(preferences.boundaries as { professionalPrinciples?: string }).professionalPrinciples}</p>
-                      </div>
-                    )}
-                    {((preferences.boundaries as { nonNegotiables?: string[] }).nonNegotiables || []).length > 0 && (
-                      <div>
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400 block mb-2">不可谈判条件</span>
-                        <div className="flex flex-wrap gap-2">
-                          {((preferences.boundaries as { nonNegotiables?: string[] }).nonNegotiables || []).map((item, i) => (
-                            <Badge key={i} variant="destructive">
-                              {item}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {((preferences.boundaries as { triggers?: string[] }).triggers || []).length > 0 && (
-                      <div>
-                        <span className="text-sm text-zinc-500 dark:text-zinc-400 block mb-2">触发负面反应</span>
-                        <div className="flex flex-wrap gap-2">
-                          {((preferences.boundaries as { triggers?: string[] }).triggers || []).map((item, i) => (
-                            <Badge key={i} variant="warning">
-                              {item}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-zinc-400 dark:text-zinc-500 text-sm">No boundary data recorded</p>
-                )}
-              </CardContent>
-            </Card>
+      )}
+      {motivation.extrinsic && motivation.extrinsic.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">外驱动因</h3>
+          <div className="flex flex-wrap gap-2">
+            {motivation.extrinsic.map((item, i) => (
+              <Badge key={i} variant="info">{item}</Badge>
+            ))}
           </div>
-        )}
-      </main>
+        </div>
+      )}
+      {motivation.balance && (
+        <div>
+          <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">内外平衡</h3>
+          <p className="text-zinc-600 dark:text-zinc-400">{motivation.balance}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <Footer />
+function GoalsDisplay({ goals }: { goals: { shortTerm?: string; midTerm?: string; longTerm?: string } | null }) {
+  if (!goals) {
+    return <EmptyText>No goals recorded</EmptyText>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {goals.shortTerm && (
+        <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">短期 (1年内)</span>
+          <p className="mt-1 text-zinc-900 dark:text-zinc-100">{goals.shortTerm}</p>
+        </div>
+      )}
+      {goals.midTerm && (
+        <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">中期 (3-5年)</span>
+          <p className="mt-1 text-zinc-900 dark:text-zinc-100">{goals.midTerm}</p>
+        </div>
+      )}
+      {goals.longTerm && (
+        <div className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 uppercase">长期 (10年+)</span>
+          <p className="mt-1 text-zinc-900 dark:text-zinc-100">{goals.longTerm}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoundariesDisplay({ boundaries }: {
+  boundaries: {
+    moralBoundaries?: string;
+    professionalPrinciples?: string;
+    nonNegotiables?: string[];
+    triggers?: string[];
+  } | null;
+}) {
+  if (!boundaries) {
+    return <EmptyText>No boundary data recorded</EmptyText>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {boundaries.moralBoundaries && (
+        <DataGridItem label="道德底线">
+          {boundaries.moralBoundaries}
+        </DataGridItem>
+      )}
+      {boundaries.professionalPrinciples && (
+        <DataGridItem label="职业原则">
+          {boundaries.professionalPrinciples}
+        </DataGridItem>
+      )}
+      {boundaries.nonNegotiables && boundaries.nonNegotiables.length > 0 && (
+        <div>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400 block mb-2">不可谈判条件</span>
+          <div className="flex flex-wrap gap-2">
+            {boundaries.nonNegotiables.map((item, i) => (
+              <Badge key={i} variant="destructive">{item}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      {boundaries.triggers && boundaries.triggers.length > 0 && (
+        <div>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400 block mb-2">触发负面反应</span>
+          <div className="flex flex-wrap gap-2">
+            {boundaries.triggers.map((item, i) => (
+              <Badge key={i} variant="warning">{item}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

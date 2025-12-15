@@ -116,9 +116,13 @@ export const pipelineHistory = pgTable("pipeline_history", {
 export const attachments = pgTable("attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
   candidateId: uuid("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
-  type: varchar("type", { length: 50 }).notNull(),
+  pipelineStage: varchar("pipeline_stage", { length: 50 }).notNull(), // 所属阶段
+  type: varchar("type", { length: 50 }).notNull(), // resume/recording/transcript/homework/note/other
   fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileSize: integer("file_size"), // 文件大小（字节）
+  mimeType: varchar("mime_type", { length: 100 }), // 文件类型
   blobUrl: varchar("blob_url", { length: 1000 }).notNull(),
+  description: text("description"), // 附件描述/备注
   uploadedBy: varchar("uploaded_by", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

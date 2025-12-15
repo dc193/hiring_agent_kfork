@@ -7,7 +7,8 @@ import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/compone
 import {
   CandidateActions,
   ContactInfo,
-  PipelineProgress,
+  InterviewSection,
+  PipelineControls,
   SkillsList,
   WorkExperienceList,
   EducationList,
@@ -81,9 +82,13 @@ export default async function CandidateDetailPage({
         </CardContent>
       </Card>
 
-      {/* Pipeline Progress */}
+      {/* Pipeline Controls */}
       <Section title="Interview Pipeline" className="mb-6">
-        <PipelineProgress currentStage={candidate.pipelineStage} />
+        <PipelineControls
+          candidateId={candidate.id}
+          currentStage={candidate.pipelineStage}
+          currentStatus={candidate.status}
+        />
       </Section>
 
       {/* Navigation Tabs */}
@@ -98,6 +103,15 @@ export default async function CandidateDetailPage({
             Preferences (偏好画像)
           </Link>
         </Button>
+      </div>
+
+      {/* Interview Section */}
+      <div className="mb-6">
+        <InterviewSection
+          candidateId={id}
+          candidateName={candidate.name}
+          currentStage={candidate.pipelineStage}
+        />
       </div>
 
       {/* Skills */}

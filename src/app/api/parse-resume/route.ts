@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
-import { db, candidates, workExperiences, educations, projects } from "@/db";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles } from "@/db";
 
 const anthropic = new Anthropic();
 
@@ -61,6 +61,54 @@ Important:
 - Return ONLY valid JSON, no additional text
 
 Resume text:
+`;
+
+const PROFILE_ANALYSIS_PROMPT = `You are an expert HR analyst. Based on the following parsed resume data, generate a candidate profile analysis (档案画像).
+
+Analyze and return a JSON object with this structure:
+{
+  "careerStage": "junior|growth|senior|transition",
+  "yearsOfExperience": number,
+  "hardSkills": [
+    {"name": "skill name", "level": 1-5}
+  ],
+  "softSkills": [
+    {"name": "skill name", "level": 1-5}
+  ],
+  "certifications": ["cert1", "cert2"],
+  "knowledgeStructure": {
+    "breadth": 1-5,
+    "depth": 1-5
+  },
+  "behaviorPatterns": {
+    "communicationStyle": "brief description or null",
+    "decisionStyle": "brief description or null",
+    "collaborationStyle": "brief description or null"
+  },
+  "profileSummary": "2-3 sentence summary of who this candidate is and what they can do (in Chinese)"
+}
+
+Career Stage Guidelines:
+- junior: 0-2 years, entry-level roles
+- growth: 2-5 years, growing responsibilities
+- senior: 5-10 years, leadership/expert roles
+- transition: changing careers or industries
+
+Skill Level Guidelines (1-5):
+- 1: Beginner/Learning
+- 2: Basic proficiency
+- 3: Intermediate/Competent
+- 4: Advanced/Expert
+- 5: Master/Industry leader
+
+Important:
+- Infer years of experience from work history dates
+- Rate skills based on how prominently they appear and context
+- For behavioral patterns, only fill what can be reasonably inferred
+- Write profileSummary in Chinese, focusing on capabilities
+- Return ONLY valid JSON
+
+Resume Data:
 `;
 
 export async function POST(request: NextRequest): Promise<NextResponse<ParseResumeResponse>> {
@@ -143,6 +191,35 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     }
 
     const parsedData = JSON.parse(jsonMatch[0]);
+
+    // ============================================
+    // Generate Profile Analysis (档案画像)
+    // ============================================
+    let profileData = null;
+    try {
+      const profileResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content: PROFILE_ANALYSIS_PROMPT + JSON.stringify(parsedData, null, 2),
+          },
+        ],
+      });
+
+      const profileText = profileResponse.content[0].type === "text"
+        ? profileResponse.content[0].text
+        : "";
+
+      const profileJsonMatch = profileText.match(/\{[\s\S]*\}/);
+      if (profileJsonMatch) {
+        profileData = JSON.parse(profileJsonMatch[0]);
+      }
+    } catch (profileError) {
+      console.error("Profile analysis error:", profileError);
+      // Continue without profile data
+    }
 
     // ============================================
     // Save to database
@@ -235,6 +312,27 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       );
     }
 
+    // 5. Save profile data (档案画像)
+    if (profileData) {
+      try {
+        await db.insert(candidateProfiles).values({
+          candidateId,
+          careerStage: profileData.careerStage || null,
+          yearsOfExperience: profileData.yearsOfExperience || null,
+          hardSkills: profileData.hardSkills || [],
+          softSkills: profileData.softSkills || [],
+          certifications: profileData.certifications || parsedData.certifications || [],
+          knowledgeStructure: profileData.knowledgeStructure || null,
+          behaviorPatterns: profileData.behaviorPatterns || null,
+          profileSummary: profileData.profileSummary || null,
+        });
+        console.log("Created profile for candidate:", candidateId);
+      } catch (profileDbError) {
+        console.error("Profile database insert error:", profileDbError);
+        // Continue without failing - profile can be added later
+      }
+    }
+
     // Build response with database ID
     const resume: ParsedResume = {
       id: candidateId,
@@ -255,7 +353,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       parseDate: new Date().toISOString(),
     };
 
-    return NextResponse.json({ success: true, data: resume });
+    return NextResponse.json({ success: true, data: resume, candidateId });
   } catch (error) {
     console.error("Resume parsing error:", error);
     return NextResponse.json(

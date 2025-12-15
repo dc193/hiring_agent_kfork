@@ -3,7 +3,7 @@ import { Heart } from "lucide-react";
 import { db, candidates, candidatePreferences } from "@/db";
 import { eq } from "drizzle-orm";
 import { PageLayout, BackLink, Section, EmptyState, Badge, DataGrid, DataGridItem } from "@/components/ui";
-import { SummaryCard, SubPageHeader } from "@/components/profile";
+import { SummaryCard, SubPageHeader, PreferencesPageClient } from "@/components/profile";
 
 const RISK_ATTITUDE_LABELS: Record<string, string> = {
   aggressive: "激进",
@@ -54,83 +54,98 @@ export default async function CandidatePreferencesPage({
         activeTab="preferences"
       />
 
-      {!preferences ? (
-        <EmptyState icon={Heart} message="No preference data yet">
-          <p className="text-sm">
-            Preference information will be gathered through interviews and assessments.
-          </p>
-        </EmptyState>
-      ) : (
-        <div className="space-y-6">
-          {preferences.preferenceSummary && (
-            <SummaryCard
-              title="AI Summary"
-              summary={preferences.preferenceSummary}
-              variant="purple"
-            />
-          )}
-
-          <Section title="价值排序">
-            <ValueRanking values={(preferences.valueRanking as Array<{ value: string; rank: number }>) || []} />
-          </Section>
-
-          <Section title="动机结构">
-            <MotivationStructure motivation={preferences.motivation as { intrinsic?: string[]; extrinsic?: string[]; balance?: string } | null} />
-          </Section>
-
-          <Section title="目标图景">
-            <GoalsDisplay goals={preferences.goals as { shortTerm?: string; midTerm?: string; longTerm?: string } | null} />
-          </Section>
-
-          <Section title="风险态度">
-            <div className="grid grid-cols-2 gap-4">
-              <DataGridItem label="Risk Attitude">
-                {preferences.riskAttitude ? RISK_ATTITUDE_LABELS[preferences.riskAttitude] || preferences.riskAttitude : "Not set"}
-              </DataGridItem>
-              {preferences.riskDetails && Object.entries(preferences.riskDetails as Record<string, string>).map(([key, value]) => (
-                value && (
-                  <DataGridItem key={key} label={formatLabel(key)}>
-                    {value}
-                  </DataGridItem>
-                )
-              ))}
-            </div>
-          </Section>
-
-          <Section title="认知偏好">
-            {preferences.cognitiveStyle ? (
-              <DataGrid data={preferences.cognitiveStyle as Record<string, string>} />
-            ) : (
-              <EmptyText>No cognitive style data recorded</EmptyText>
+      <PreferencesPageClient
+        candidateId={id}
+        preferencesData={preferences ? {
+          valueRanking: preferences.valueRanking as Array<{ value: string; rank: number }> | null,
+          motivation: preferences.motivation as { intrinsic?: string[]; extrinsic?: string[]; balance?: string } | null,
+          goals: preferences.goals as { shortTerm?: string; midTerm?: string; longTerm?: string } | null,
+          riskAttitude: preferences.riskAttitude,
+          cognitiveStyle: preferences.cognitiveStyle as Record<string, string> | null,
+          relationshipStyle: preferences.relationshipStyle as Record<string, string> | null,
+          growthStyle: preferences.growthStyle as Record<string, string> | null,
+          boundaries: preferences.boundaries as { moralBoundaries?: string; professionalPrinciples?: string; nonNegotiables?: string[]; triggers?: string[] } | null,
+          preferenceSummary: preferences.preferenceSummary,
+        } : null}
+      >
+        {!preferences ? (
+          <EmptyState icon={Heart} message="No preference data yet">
+            <p className="text-sm">
+              Preference information will be gathered through interviews and assessments.
+            </p>
+          </EmptyState>
+        ) : (
+          <div className="space-y-6">
+            {preferences.preferenceSummary && (
+              <SummaryCard
+                title="AI Summary"
+                summary={preferences.preferenceSummary}
+                variant="purple"
+              />
             )}
-          </Section>
 
-          <Section title="关系偏好">
-            {preferences.relationshipStyle ? (
-              <DataGrid data={preferences.relationshipStyle as Record<string, string>} />
-            ) : (
-              <EmptyText>No relationship style data recorded</EmptyText>
-            )}
-          </Section>
+            <Section title="价值排序">
+              <ValueRanking values={(preferences.valueRanking as Array<{ value: string; rank: number }>) || []} />
+            </Section>
 
-          <Section title="成长偏好">
-            {preferences.growthStyle ? (
-              <DataGrid data={preferences.growthStyle as Record<string, string>} />
-            ) : (
-              <EmptyText>No growth style data recorded</EmptyText>
-            )}
-          </Section>
+            <Section title="动机结构">
+              <MotivationStructure motivation={preferences.motivation as { intrinsic?: string[]; extrinsic?: string[]; balance?: string } | null} />
+            </Section>
 
-          <Section title="边界与底线">
-            <BoundariesDisplay boundaries={preferences.boundaries as {
-              moralBoundaries?: string;
-              professionalPrinciples?: string;
-              nonNegotiables?: string[];
-              triggers?: string[];
-            } | null} />
-          </Section>
-        </div>
-      )}
+            <Section title="目标图景">
+              <GoalsDisplay goals={preferences.goals as { shortTerm?: string; midTerm?: string; longTerm?: string } | null} />
+            </Section>
+
+            <Section title="风险态度">
+              <div className="grid grid-cols-2 gap-4">
+                <DataGridItem label="Risk Attitude">
+                  {preferences.riskAttitude ? RISK_ATTITUDE_LABELS[preferences.riskAttitude] || preferences.riskAttitude : "Not set"}
+                </DataGridItem>
+                {preferences.riskDetails && Object.entries(preferences.riskDetails as Record<string, string>).map(([key, value]) => (
+                  value && (
+                    <DataGridItem key={key} label={formatLabel(key)}>
+                      {value}
+                    </DataGridItem>
+                  )
+                ))}
+              </div>
+            </Section>
+
+            <Section title="认知偏好">
+              {preferences.cognitiveStyle ? (
+                <DataGrid data={preferences.cognitiveStyle as Record<string, string>} />
+              ) : (
+                <EmptyText>No cognitive style data recorded</EmptyText>
+              )}
+            </Section>
+
+            <Section title="关系偏好">
+              {preferences.relationshipStyle ? (
+                <DataGrid data={preferences.relationshipStyle as Record<string, string>} />
+              ) : (
+                <EmptyText>No relationship style data recorded</EmptyText>
+              )}
+            </Section>
+
+            <Section title="成长偏好">
+              {preferences.growthStyle ? (
+                <DataGrid data={preferences.growthStyle as Record<string, string>} />
+              ) : (
+                <EmptyText>No growth style data recorded</EmptyText>
+              )}
+            </Section>
+
+            <Section title="边界与底线">
+              <BoundariesDisplay boundaries={preferences.boundaries as {
+                moralBoundaries?: string;
+                professionalPrinciples?: string;
+                nonNegotiables?: string[];
+                triggers?: string[];
+              } | null} />
+            </Section>
+          </div>
+        )}
+      </PreferencesPageClient>
     </PageLayout>
   );
 }

@@ -1,6 +1,8 @@
 export { CandidateActions } from "./candidate-actions";
 export { ContactInfo } from "./contact-info";
 export { EducationList } from "./education-list";
+export { InterviewSection } from "./interview-section";
+export { PipelineControls } from "./pipeline-controls";
 export { PipelineProgress, PIPELINE_STAGES, STAGE_LABELS } from "./pipeline-progress";
 export { ProjectsList } from "./projects-list";
 export { SkillsList } from "./skills-list";

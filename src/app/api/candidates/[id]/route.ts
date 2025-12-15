@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences, CANDIDATE_STATUSES } from "@/db";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences, pipelineHistory, CANDIDATE_STATUSES, PIPELINE_STAGES } from "@/db";
 import { eq } from "drizzle-orm";
 
 // GET /api/candidates/[id] - Get a single candidate
@@ -52,7 +52,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/candidates/[id] - Update candidate status
+// PATCH /api/candidates/[id] - Update candidate status and/or pipeline stage
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,15 +60,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
-
-    // Validate status
-    if (!status || !CANDIDATE_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { success: false, error: `Invalid status. Must be one of: ${CANDIDATE_STATUSES.join(", ")}` },
-        { status: 400 }
-      );
-    }
+    const { status, pipelineStage, changedBy, note } = body;
 
     // Check if candidate exists
     const [candidate] = await db
@@ -83,10 +75,45 @@ export async function PATCH(
       );
     }
 
-    // Update status
+    const updates: { status?: string; pipelineStage?: string; updatedAt: Date } = {
+      updatedAt: new Date(),
+    };
+
+    // Validate and set status if provided
+    if (status !== undefined) {
+      if (!CANDIDATE_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { success: false, error: `Invalid status. Must be one of: ${CANDIDATE_STATUSES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.status = status;
+    }
+
+    // Validate and set pipeline stage if provided
+    if (pipelineStage !== undefined) {
+      if (!PIPELINE_STAGES.includes(pipelineStage)) {
+        return NextResponse.json(
+          { success: false, error: `Invalid pipeline stage. Must be one of: ${PIPELINE_STAGES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.pipelineStage = pipelineStage;
+
+      // Record pipeline history
+      await db.insert(pipelineHistory).values({
+        candidateId: id,
+        fromStage: candidate.pipelineStage,
+        toStage: pipelineStage,
+        changedBy: changedBy || null,
+        note: note || null,
+      });
+    }
+
+    // Update candidate
     const [updated] = await db
       .update(candidates)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(candidates.id, id))
       .returning();
 

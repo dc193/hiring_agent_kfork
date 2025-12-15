@@ -5,6 +5,7 @@ export { Button, buttonVariants } from "./button";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./card";
 export { DataGrid, DataGridItem } from "./data-grid";
 export { EmptyState } from "./empty-state";
+export { MarkdownPreview } from "./markdown-preview";
 export { PageHeader } from "./page-header";
 export { PageLayout } from "./page-layout";
 export { Section } from "./section";

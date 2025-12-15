@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, FileText, Sparkles, MessageSquare, Star, Users, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { ChevronLeft, FileText, Sparkles, MessageSquare, Star, Users, Clock, AlertCircle } from "lucide-react";
 import {
   db,
   candidates,
@@ -12,8 +12,15 @@ import {
   interviewNotes,
   PIPELINE_STAGES,
 } from "@/db";
-import { eq, desc, and } from "drizzle-orm";
-import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
+import { eq, desc } from "drizzle-orm";
+import { PageLayout, Section, Card, CardContent, Button, Badge, MarkdownPreview } from "@/components/ui";
+
+// Helper to check if file is markdown
+function isMarkdownFile(fileName: string, mimeType: string | null): boolean {
+  return mimeType === "text/markdown" ||
+    fileName.endsWith(".md") ||
+    fileName.endsWith(".markdown");
+}
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -229,6 +236,8 @@ export default async function ComprehensivePage({
                         const analysisJob = jobs.find(j => j.jobType === "analyze" && j.status === "completed");
                         const outputData = analysisJob?.outputData as { analysis?: string; summary?: string } | null;
 
+                        const isMd = isMarkdownFile(attachment.fileName, attachment.mimeType);
+
                         return (
                           <div
                             key={attachment.id}
@@ -249,11 +258,24 @@ export default async function ComprehensivePage({
                                 <Badge variant="secondary" className="text-xs">
                                   {TYPE_LABELS[attachment.type] || attachment.type}
                                 </Badge>
+                                {isMd && (
+                                  <Badge variant="outline" className="text-xs">
+                                    可预览
+                                  </Badge>
+                                )}
                               </div>
                               <span className="text-xs text-zinc-500">
                                 {new Date(attachment.createdAt).toLocaleDateString("zh-CN")}
                               </span>
                             </div>
+
+                            {/* Markdown Preview */}
+                            {isMd && (
+                              <MarkdownPreview
+                                url={attachment.blobUrl}
+                                fileName={attachment.fileName}
+                              />
+                            )}
 
                             {/* AI Analysis Result */}
                             {analysisJob && outputData && (

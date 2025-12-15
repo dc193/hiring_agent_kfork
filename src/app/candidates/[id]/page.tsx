@@ -92,7 +92,7 @@ export default async function CandidateDetailPage({
       </Section>
 
       {/* Navigation Tabs */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex flex-wrap gap-4 mb-6">
         <Button variant="outline" asChild>
           <Link href={`/candidates/${id}/profile`}>
             Profile (档案画像)
@@ -101,6 +101,11 @@ export default async function CandidateDetailPage({
         <Button variant="outline" asChild>
           <Link href={`/candidates/${id}/preferences`}>
             Preferences (偏好画像)
+          </Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href={`/candidates/${id}/comprehensive`}>
+            综合档案 (Comprehensive)
           </Link>
         </Button>
       </div>

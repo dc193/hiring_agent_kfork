@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./card";
 
 interface SectionProps {
-  title?: string;
+  title?: ReactNode;
   children: ReactNode;
   className?: string;
 }

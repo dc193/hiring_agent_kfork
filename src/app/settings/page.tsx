@@ -8,10 +8,19 @@ async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = [])
   try {
     return await queryFn();
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error) {
-      const code = (error as { code: string }).code;
-      if (code === "42P01" || code === "42703") {
+    // Check for PostgreSQL error codes
+    if (error && typeof error === "object") {
+      const err = error as { code?: string; message?: string };
+      // 42P01 = undefined_table, 42703 = undefined_column
+      if (err.code === "42P01" || err.code === "42703") {
         console.warn("Table or column not found, returning empty array");
+        return defaultValue;
+      }
+      // Also check error message for table not found
+      if (err.message?.includes("does not exist") ||
+          err.message?.includes("relation") ||
+          err.message?.includes("Failed query")) {
+        console.warn("Query failed (table may not exist), returning empty array:", err.message);
         return defaultValue;
       }
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -10,7 +10,6 @@ import {
   File,
   Trash2,
   Download,
-  Plus,
   X,
   Loader2,
   Sparkles,
@@ -25,6 +24,14 @@ interface StageAttachmentsProps {
   stage: string;
   initialAttachments: Attachment[];
   attachmentTypes: Array<{ value: string; label: string }>;
+}
+
+interface UploadingFile {
+  id: string;
+  file: File;
+  progress: number;
+  status: "pending" | "uploading" | "done" | "error";
+  error?: string;
 }
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
@@ -50,6 +57,14 @@ const TYPE_COLORS: Record<string, string> = {
   other: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
+// Infer file type from mime type
+function inferFileType(mimeType: string): string {
+  if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) return "recording";
+  if (mimeType === "application/pdf") return "resume";
+  if (mimeType.startsWith("text/")) return "note";
+  return "other";
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -66,17 +81,16 @@ export function StageAttachments({
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState(initialAttachments);
-  const [isUploading, setIsUploading] = useState(false);
-  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [selectedType, setSelectedType] = useState(attachmentTypes[0]?.value || "other");
-  const [description, setDescription] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [processingAttachments, setProcessingAttachments] = useState<Set<string>>(new Set());
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
 
   // Poll for processing job status
-  const pollProcessingStatus = async (attachmentId: string) => {
-    const maxAttempts = 60; // Poll for up to 5 minutes
+  const pollProcessingStatus = useCallback(async (attachmentId: string) => {
+    const maxAttempts = 60;
     let attempts = 0;
 
     const poll = async () => {
@@ -98,7 +112,6 @@ export function StageAttachments({
           );
 
           if (!pendingOrProcessing) {
-            // Processing complete
             setProcessingAttachments((prev) => {
               const next = new Set(prev);
               next.delete(attachmentId);
@@ -107,7 +120,6 @@ export function StageAttachments({
 
             if (hasCompleted) {
               setProcessingMessage("AI分析完成！正在刷新附件列表...");
-              // Refresh attachments list
               setTimeout(() => {
                 router.refresh();
                 setProcessingMessage(null);
@@ -122,7 +134,7 @@ export function StageAttachments({
 
         attempts++;
         if (attempts < maxAttempts) {
-          setTimeout(poll, 5000); // Poll every 5 seconds
+          setTimeout(poll, 5000);
         } else {
           setProcessingAttachments((prev) => {
             const next = new Set(prev);
@@ -136,55 +148,155 @@ export function StageAttachments({
     };
 
     poll();
-  };
+  }, [router]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
+  // Upload a single file
+  const uploadFile = useCallback(async (file: File, fileType: string): Promise<Attachment | null> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("type", fileType);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", selectedType);
-      formData.append("description", description);
-
       const response = await fetch(
         `/api/candidates/${candidateId}/stages/${stage}/attachments`,
-        {
-          method: "POST",
-          body: formData,
-        }
+        { method: "POST", body: formData }
       );
 
       const result = await response.json();
 
       if (result.success) {
-        setAttachments([result.data, ...attachments]);
-        setShowUploadForm(false);
-        setDescription("");
-        setSelectedType(attachmentTypes[0]?.value || "other");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-
         // Check if processing jobs were created
         if (result.processingJobs && result.processingJobs.length > 0) {
           setProcessingAttachments((prev) => new Set([...prev, result.data.id]));
-          setProcessingMessage("文件已上传，正在进行AI分析...");
           pollProcessingStatus(result.data.id);
         }
-      } else {
-        alert(result.error || "Upload failed");
+        return result.data;
       }
-    } catch (error) {
-      console.error("Upload error:", error);
-      alert("Failed to upload file");
-    } finally {
-      setIsUploading(false);
+      return null;
+    } catch {
+      return null;
     }
-  };
+  }, [candidateId, stage, pollProcessingStatus]);
+
+  // Handle multiple files upload
+  const handleFilesUpload = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    // Create uploading file entries
+    const newUploadingFiles: UploadingFile[] = fileArray.map((file, index) => ({
+      id: `upload-${Date.now()}-${index}`,
+      file,
+      progress: 0,
+      status: "pending" as const,
+    }));
+
+    setUploadingFiles((prev) => [...prev, ...newUploadingFiles]);
+
+    // Show processing message for batch upload
+    if (fileArray.length > 1) {
+      setProcessingMessage(`正在上传 ${fileArray.length} 个文件...`);
+    }
+
+    // Upload files sequentially
+    const uploadedAttachments: Attachment[] = [];
+
+    for (let i = 0; i < newUploadingFiles.length; i++) {
+      const uploadingFile = newUploadingFiles[i];
+      const file = uploadingFile.file;
+
+      // Update status to uploading
+      setUploadingFiles((prev) =>
+        prev.map((f) =>
+          f.id === uploadingFile.id ? { ...f, status: "uploading" as const, progress: 50 } : f
+        )
+      );
+
+      // Infer file type or use selected type
+      const fileType = selectedType === "other" ? inferFileType(file.type) : selectedType;
+      const result = await uploadFile(file, fileType);
+
+      if (result) {
+        uploadedAttachments.push(result);
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadingFile.id ? { ...f, status: "done" as const, progress: 100 } : f
+          )
+        );
+      } else {
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadingFile.id
+              ? { ...f, status: "error" as const, error: "上传失败" }
+              : f
+          )
+        );
+      }
+    }
+
+    // Add uploaded attachments to list
+    if (uploadedAttachments.length > 0) {
+      setAttachments((prev) => [...uploadedAttachments.reverse(), ...prev]);
+    }
+
+    // Clear completed uploads after delay
+    setTimeout(() => {
+      setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
+      if (fileArray.length > 1) {
+        setProcessingMessage(
+          uploadedAttachments.length === fileArray.length
+            ? `成功上传 ${uploadedAttachments.length} 个文件`
+            : `上传完成: ${uploadedAttachments.length}/${fileArray.length} 成功`
+        );
+        setTimeout(() => setProcessingMessage(null), 3000);
+      }
+    }, 1500);
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [selectedType, uploadFile]);
+
+  // Handle file input change
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFilesUpload(files);
+    }
+  }, [handleFilesUpload]);
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFilesUpload(files);
+    }
+  }, [handleFilesUpload]);
 
   const handleDelete = async (attachmentId: string) => {
     if (!confirm("确定要删除这个附件吗？")) return;
@@ -217,89 +329,123 @@ export function StageAttachments({
     return found?.label || type;
   };
 
+  const isUploading = uploadingFiles.some((f) => f.status === "uploading" || f.status === "pending");
+
   return (
     <Card>
       <CardContent className="pt-6">
-        {/* Upload Button */}
-        <div className="mb-4">
-          {showUploadForm ? (
-            <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">上传附件</h4>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowUploadForm(false)}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
+        {/* Drop Zone */}
+        <div
+          className={`relative mb-4 border-2 border-dashed rounded-lg transition-all ${
+            isDragging
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+              : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600"
+          }`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <div className="p-6 text-center">
+            <Upload
+              className={`w-10 h-10 mx-auto mb-3 ${
+                isDragging ? "text-blue-500" : "text-zinc-400"
+              }`}
+            />
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">
+              {isDragging ? "松开鼠标上传文件" : "拖拽文件到此处，或"}
+            </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">附件类型</label>
-                  <select
-                    value={selectedType}
-                    onChange={(e) => setSelectedType(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                  >
-                    {attachmentTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">描述 (可选)</label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="添加描述..."
-                    className="w-full px-3 py-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
-                  />
-                </div>
-              </div>
+            <div className="flex items-center justify-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+                disabled={isUploading}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    上传中...
+                  </>
+                ) : (
+                  "选择文件"
+                )}
+              </Button>
 
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  disabled={isUploading}
-                />
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="w-full"
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      上传中...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      选择文件并上传
-                    </>
-                  )}
-                </Button>
-              </div>
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="px-3 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+              >
+                {attachmentTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setShowUploadForm(true)}
-              className="w-full border-dashed"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              添加附件
-            </Button>
-          )}
+
+            <p className="text-xs text-zinc-500 mt-2">
+              支持批量上传多个文件
+            </p>
+          </div>
         </div>
+
+        {/* Uploading Files Progress */}
+        {uploadingFiles.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {uploadingFiles.map((uploadingFile) => (
+              <div
+                key={uploadingFile.id}
+                className="flex items-center gap-3 p-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg"
+              >
+                <div className="flex-shrink-0">
+                  {uploadingFile.status === "uploading" || uploadingFile.status === "pending" ? (
+                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                  ) : uploadingFile.status === "done" ? (
+                    <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                      <X className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">
+                    {uploadingFile.file.name}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {formatFileSize(uploadingFile.file.size)}
+                    {uploadingFile.error && (
+                      <span className="text-red-500 ml-2">{uploadingFile.error}</span>
+                    )}
+                  </p>
+                </div>
+                {(uploadingFile.status === "uploading" || uploadingFile.status === "pending") && (
+                  <div className="w-20 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${uploadingFile.progress}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Processing Message */}
         {processingMessage && (
@@ -312,11 +458,11 @@ export function StageAttachments({
         )}
 
         {/* Attachments List */}
-        {attachments.length === 0 ? (
+        {attachments.length === 0 && uploadingFiles.length === 0 ? (
           <div className="text-center py-8 text-zinc-500">
             <File className="w-12 h-12 mx-auto mb-2 opacity-30" />
             <p>暂无附件</p>
-            <p className="text-sm">点击上方按钮上传文件</p>
+            <p className="text-sm">拖拽文件到上方区域或点击选择文件</p>
           </div>
         ) : (
           <div className="space-y-2">

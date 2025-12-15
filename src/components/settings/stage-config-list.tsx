@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { PipelineStageConfig } from "@/db";
 import { ChevronDown, ChevronUp, FileAudio, FileText, Sparkles, Settings2 } from "lucide-react";
 import { Button, Badge } from "@/components/ui";
 import { StageConfigEditor } from "./stage-config-editor";
@@ -168,7 +167,7 @@ export function StageConfigList({ initialConfigs }: StageConfigListProps) {
                         </div>
                       ) : (
                         <p className="text-sm text-zinc-500 bg-zinc-50 dark:bg-zinc-800/50 p-3 rounded-lg">
-                          暂未配置自动处理规则。点击"编辑"按钮添加规则。
+                          暂未配置自动处理规则。点击&ldquo;编辑&rdquo;按钮添加规则。
                         </p>
                       )}
                     </div>

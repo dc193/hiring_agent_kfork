@@ -238,7 +238,7 @@ export function StageConfigEditor({
           </div>
         ) : (
           <p className="text-sm text-zinc-500 p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg text-center">
-            暂无处理规则，点击"添加规则"开始配置
+            暂无处理规则，点击&ldquo;添加规则&rdquo;开始配置
           </p>
         )}
       </div>

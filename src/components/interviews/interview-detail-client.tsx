@@ -217,7 +217,7 @@ export function InterviewDetailClient({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Candidate's Answer</label>
+                  <label className="block text-sm font-medium mb-1">Candidate&apos;s Answer</label>
                   <textarea
                     value={questionForm.answerText}
                     onChange={(e) => setQuestionForm({ ...questionForm, answerText: e.target.value })}

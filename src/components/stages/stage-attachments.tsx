@@ -15,6 +15,9 @@ import {
   Sparkles,
   MessageSquare,
   Send,
+  Eye,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -96,6 +99,52 @@ export function StageAttachments({
   const [textNoteContent, setTextNoteContent] = useState("");
   const [textNoteTitle, setTextNoteTitle] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const [expandedPreviews, setExpandedPreviews] = useState<Set<string>>(new Set());
+  const [previewContents, setPreviewContents] = useState<Record<string, string>>({});
+  const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
+
+  // Check if file is previewable (markdown or text)
+  const isPreviewable = (fileName: string, mimeType: string | null): boolean => {
+    return mimeType === "text/markdown" ||
+      mimeType?.startsWith("text/") ||
+      fileName.endsWith(".md") ||
+      fileName.endsWith(".txt") ||
+      fileName.endsWith(".json");
+  };
+
+  // Toggle preview for an attachment
+  const togglePreview = async (attachment: Attachment) => {
+    const id = attachment.id;
+
+    if (expandedPreviews.has(id)) {
+      setExpandedPreviews(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      return;
+    }
+
+    // If content not loaded, fetch it
+    if (!previewContents[id]) {
+      setLoadingPreviews(prev => new Set([...prev, id]));
+      try {
+        const response = await fetch(attachment.blobUrl);
+        const text = await response.text();
+        setPreviewContents(prev => ({ ...prev, [id]: text }));
+      } catch {
+        setPreviewContents(prev => ({ ...prev, [id]: "[无法加载文件内容]" }));
+      } finally {
+        setLoadingPreviews(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    }
+
+    setExpandedPreviews(prev => new Set([...prev, id]));
+  };
 
   // Check if selected type supports text input
   const supportsTextInput = TEXT_INPUT_TYPES.includes(selectedType) ||
@@ -596,76 +645,113 @@ export function StageAttachments({
               const Icon = TYPE_ICONS[attachment.type] || File;
               const isDeleting = deletingId === attachment.id;
               const isProcessing = processingAttachments.has(attachment.id);
+              const canPreview = isPreviewable(attachment.fileName, attachment.mimeType);
+              const isExpanded = expandedPreviews.has(attachment.id);
+              const isLoadingPreview = loadingPreviews.has(attachment.id);
+              const previewContent = previewContents[attachment.id];
 
               return (
                 <div
                   key={attachment.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                  className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden"
                 >
-                  <div className={`p-2 rounded-lg ${TYPE_COLORS[attachment.type] || TYPE_COLORS.other}`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
+                  {/* Attachment Header */}
+                  <div className="flex items-center gap-3 p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    <div className={`p-2 rounded-lg ${TYPE_COLORS[attachment.type] || TYPE_COLORS.other}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                        {attachment.fileName}
-                      </p>
-                      <Badge variant="secondary" className="text-xs">
-                        {getTypeLabel(attachment.type)}
-                      </Badge>
-                      {isProcessing && (
-                        <Badge variant="outline" className="text-xs flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                          <Sparkles className="w-3 h-3 animate-pulse" />
-                          AI分析中
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                          {attachment.fileName}
+                        </p>
+                        <Badge variant="secondary" className="text-xs">
+                          {getTypeLabel(attachment.type)}
                         </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
-                      {attachment.fileSize && (
-                        <span>{formatFileSize(attachment.fileSize)}</span>
-                      )}
-                      <span>
-                        {new Date(attachment.createdAt).toLocaleDateString("zh-CN")}
-                      </span>
-                      {attachment.description && (
-                        <span className="truncate max-w-[200px]">
-                          {attachment.description}
+                        {canPreview && (
+                          <Badge variant="outline" className="text-xs">
+                            可预览
+                          </Badge>
+                        )}
+                        {isProcessing && (
+                          <Badge variant="outline" className="text-xs flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                            <Sparkles className="w-3 h-3 animate-pulse" />
+                            AI分析中
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-zinc-500">
+                        {attachment.fileSize && (
+                          <span>{formatFileSize(attachment.fileSize)}</span>
+                        )}
+                        <span>
+                          {new Date(attachment.createdAt).toLocaleDateString("zh-CN")}
                         </span>
+                        {attachment.description && (
+                          <span className="truncate max-w-[200px]">
+                            {attachment.description}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {canPreview && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => togglePreview(attachment)}
+                          className="text-zinc-600 hover:text-zinc-800"
+                        >
+                          {isLoadingPreview ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : isExpanded ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        <a
+                          href={attachment.blobUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={attachment.fileName}
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(attachment.id)}
+                        disabled={isDeleting}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      asChild
-                      className="text-blue-600 hover:text-blue-700"
-                    >
-                      <a
-                        href={attachment.blobUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={attachment.fileName}
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(attachment.id)}
-                      disabled={isDeleting}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      {isDeleting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
+                  {/* Preview Content */}
+                  {isExpanded && previewContent && (
+                    <div className="border-t border-zinc-200 dark:border-zinc-700 p-4 bg-zinc-50 dark:bg-zinc-800/30">
+                      <pre className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto">
+                        {previewContent}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               );
             })}

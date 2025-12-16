@@ -11,6 +11,10 @@ import {
   FeatureRequestSection,
 } from "@/components/dashboard";
 
+// Force dynamic rendering to show fresh data
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Safe query helper - returns empty array if table doesn't exist
 async function safeQuery<T>(queryFn: () => Promise<T[]>): Promise<T[]> {
   try {

@@ -103,13 +103,20 @@ export function StageAttachments({
   const [previewContents, setPreviewContents] = useState<Record<string, string>>({});
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
 
-  // Check if file is previewable (markdown or text)
+  // Check if file is previewable (markdown, text, or PDF)
   const isPreviewable = (fileName: string, mimeType: string | null): boolean => {
     return mimeType === "text/markdown" ||
       mimeType?.startsWith("text/") ||
+      mimeType === "application/pdf" ||
       fileName.endsWith(".md") ||
       fileName.endsWith(".txt") ||
-      fileName.endsWith(".json");
+      fileName.endsWith(".json") ||
+      fileName.endsWith(".pdf");
+  };
+
+  // Check if file is a PDF
+  const isPdf = (fileName: string, mimeType: string | null): boolean => {
+    return mimeType === "application/pdf" || fileName.endsWith(".pdf");
   };
 
   // Toggle preview for an attachment
@@ -122,6 +129,12 @@ export function StageAttachments({
         next.delete(id);
         return next;
       });
+      return;
+    }
+
+    // For PDF files, just toggle - no need to fetch content
+    if (isPdf(attachment.fileName, attachment.mimeType)) {
+      setExpandedPreviews(prev => new Set([...prev, id]));
       return;
     }
 
@@ -745,11 +758,19 @@ export function StageAttachments({
                   </div>
 
                   {/* Preview Content */}
-                  {isExpanded && previewContent && (
-                    <div className="border-t border-zinc-200 dark:border-zinc-700 p-4 bg-zinc-50 dark:bg-zinc-800/30">
-                      <pre className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto">
-                        {previewContent}
-                      </pre>
+                  {isExpanded && (
+                    <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/30">
+                      {isPdf(attachment.fileName, attachment.mimeType) ? (
+                        <iframe
+                          src={attachment.blobUrl}
+                          className="w-full h-[600px] border-0"
+                          title={`Preview: ${attachment.fileName}`}
+                        />
+                      ) : previewContent ? (
+                        <pre className="p-4 text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto">
+                          {previewContent}
+                        </pre>
+                      ) : null}
                     </div>
                   )}
                 </div>

@@ -18,6 +18,7 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  RotateCcw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,37 @@ export function StageAttachments({
   const [expandedPreviews, setExpandedPreviews] = useState<Set<string>>(new Set());
   const [previewContents, setPreviewContents] = useState<Record<string, string>>({});
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+
+  // Trigger AI re-processing for an attachment
+  const handleReprocess = async (attachmentId: string) => {
+    setReprocessingId(attachmentId);
+    setProcessingMessage("正在触发 AI 处理...");
+
+    try {
+      const response = await fetch(
+        `/api/candidates/${candidateId}/stages/${stage}/attachments/${attachmentId}`,
+        { method: "POST" }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        setProcessingAttachments((prev) => new Set([...prev, attachmentId]));
+        setProcessingMessage("AI 处理已触发，请稍候...");
+        pollProcessingStatus(attachmentId);
+      } else {
+        setProcessingMessage(result.error || "处理失败");
+        setTimeout(() => setProcessingMessage(null), 3000);
+      }
+    } catch (error) {
+      console.error("Failed to trigger reprocess:", error);
+      setProcessingMessage("触发失败，请重试");
+      setTimeout(() => setProcessingMessage(null), 3000);
+    } finally {
+      setReprocessingId(null);
+    }
+  };
 
   // Check if file is previewable (markdown, text, or PDF)
   const isPreviewable = (fileName: string, mimeType: string | null): boolean => {
@@ -726,6 +758,21 @@ export function StageAttachments({
                           )}
                         </Button>
                       )}
+                      {/* Re-process button */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleReprocess(attachment.id)}
+                        disabled={reprocessingId === attachment.id || isProcessing}
+                        className="text-amber-600 hover:text-amber-700"
+                        title="重新 AI 处理"
+                      >
+                        {reprocessingId === attachment.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="w-4 h-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

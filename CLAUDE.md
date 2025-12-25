@@ -216,3 +216,74 @@ import { Header, Footer } from "@/components/layout"
 - v0.1 - Initial setup with resume parsing
 - v0.2 - Database schema with Profile/Preference framework
 - v0.3 - Add shadcn/ui component library and coding standards
+- v0.4 - Pipeline management, stage-based materials, candidate CRUD
+- v0.5 - Interview management system (sessions, questions, evaluations)
+- v0.6 - Settings page with stage configurations
+- v0.7 - Comprehensive profile view, file preview features
+
+---
+
+## Recent Updates (2024-12)
+
+### Completed Features
+
+1. **外部顾问分析阶段** - Pipeline 增加 consultant_review 阶段
+   - 位置：team_interview 和 final_interview 之间
+   - 7 阶段流程：简历筛选 → 电话面试 → 作业 → Team面试 → 外部顾问 → 终面 → Offer
+
+2. **文件预览功能** - Pipeline 各阶段附件支持直接预览
+   - 支持 PDF（iframe 嵌入）
+   - 支持 Markdown、Text、JSON（文本展示）
+   - 组件：`src/components/stages/stage-attachments.tsx`
+
+3. **文字输入模式** - 评审意见/转录文本/面试笔记支持直接文字输入
+   - 不需要上传文件，直接在页面输入
+   - 跳过 AI 分析（人工输入内容）
+
+4. **PDF 分析修复** - Claude API 可以正确分析 PDF 文件内容
+   - 使用 document 类型 + base64 编码
+   - 组件：`src/lib/processing.ts`
+
+5. **Bug/Feature 显示修复** - 提交后正确显示
+   - 添加 `dynamic = "force-dynamic"` 禁用页面缓存
+
+---
+
+## Key Components
+
+| 功能 | 文件路径 |
+|------|----------|
+| Pipeline 阶段定义 | `src/db/schema.ts` (PIPELINE_STAGES) |
+| 阶段附件管理 | `src/components/stages/stage-attachments.tsx` |
+| Pipeline 控制器 | `src/components/candidates/pipeline-controls.tsx` |
+| 阶段徽章 | `src/components/candidates/stage-badge.tsx` |
+| 综合档案页面 | `src/app/candidates/[id]/comprehensive/page.tsx` |
+| AI 处理逻辑 | `src/lib/processing.ts` |
+| 设置页面 | `src/app/settings/page.tsx` |
+
+---
+
+## Pipeline 阶段配置
+
+每个阶段的附件类型定义在：`src/app/candidates/[id]/stages/[stage]/page.tsx`
+
+```typescript
+const STAGE_ATTACHMENT_TYPES = {
+  resume_review: ["简历", "筛选备注", "其他"],
+  phone_screen: ["通话录音", "转录文本", "面试笔记", "其他"],
+  homework: ["作业提交", "评审意见", "其他"],
+  team_interview: ["面试录音", "转录文本", "面试笔记", "其他"],
+  consultant_review: ["顾问评估报告", "沟通记录", "其他"],
+  final_interview: ["面试录音", "转录文本", "面试笔记", "其他"],
+  offer: ["Offer Letter", "合同", "备注", "其他"],
+};
+```
+
+---
+
+## Pending / Future Ideas
+
+- [ ] 自定义流程模版（暂不需要，写死即可）
+- [ ] 用户认证 (Privy)
+- [ ] 更多 AI 分析维度
+

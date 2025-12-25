@@ -287,3 +287,55 @@ const STAGE_ATTACHMENT_TYPES = {
 - [ ] 用户认证 (Privy)
 - [ ] 更多 AI 分析维度
 
+---
+
+## 规划中的 Features (v0.8+)
+
+### Feature 1: Smart Resume + 简历评估 Prompt
+
+**目标**：上传简历后，自动生成结构化评估报告
+
+**流程**：
+```
+上传简历 → Ali Smart Resume 解析 → 自定义评估 Prompt 处理 → 生成评估.md → 存入材料库
+```
+
+**需要改动**：
+- [ ] Settings 增加「简历评估 Prompt」配置字段
+- [ ] 修改简历上传流程，增加评估生成步骤
+- [ ] 评估结果以 MD 格式存入 resume_review 阶段附件
+
+---
+
+### Feature 2: 手动 AI 重新处理
+
+**目标**：文件上传后如果 AI 处理失败/中断，可以手动重新触发
+
+**需要改动**：
+- [ ] stage-attachments 组件增加「重新生成」按钮
+- [ ] 调用 processing jobs API 重新处理
+- [ ] 显示处理状态反馈
+
+---
+
+### Feature 3: 阶段性总结 Prompt（大改动）
+
+**目标**：每个 Pipeline 阶段可以生成一个综合总结报告
+
+**流程**：
+```
+点击「生成阶段总结」→ 收集当前+之前阶段所有文件 → 用阶段 Prompt 处理 → 输出 {阶段}-总结-{时间戳}.md
+```
+
+**需要改动**：
+- [ ] Settings 增加每个阶段的「阶段总结 Prompt」配置
+- [ ] stage page 增加「生成阶段总结」按钮
+- [ ] 新建 API：收集多阶段文件 + Claude 处理 + 生成 MD
+- [ ] 考虑文件数量多时的 token 限制处理
+
+**设计考虑**：
+- 知识库来源：当前阶段 + 所有之前阶段的附件
+- 文件类型处理：PDF/MD/TXT 直接读取，其他格式可能需要跳过或提取
+- Token 限制：如果内容太多，需要分批处理或摘要
+- 命名规则：`{stage}-总结-{YYYYMMDD-HHmmss}.md`
+

@@ -2,12 +2,13 @@ import { pgTable, uuid, varchar, text, timestamp, integer, jsonb } from "drizzle
 
 // Pipeline stages enum
 export const PIPELINE_STAGES = [
-  "resume_review",   // 简历筛选
-  "phone_screen",    // 电话面试
-  "homework",        // 作业
-  "team_interview",  // Research team 面试
-  "final_interview", // 终面
-  "offer",           // Offer
+  "resume_review",      // 简历筛选
+  "phone_screen",       // 电话面试
+  "homework",           // 作业
+  "team_interview",     // Research team 面试
+  "consultant_review",  // 外部顾问分析
+  "final_interview",    // 终面
+  "offer",              // Offer
 ] as const;
 
 export type PipelineStage = typeof PIPELINE_STAGES[number];

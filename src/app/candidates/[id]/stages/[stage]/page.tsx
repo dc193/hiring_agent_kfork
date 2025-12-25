@@ -29,6 +29,7 @@ const STAGE_LABELS: Record<string, string> = {
   phone_screen: "电话面试",
   homework: "作业",
   team_interview: "Team 面试",
+  consultant_review: "外部顾问",
   final_interview: "终面",
   offer: "Offer",
 };
@@ -38,6 +39,7 @@ const STAGE_DESCRIPTIONS: Record<string, string> = {
   phone_screen: "通过电话/视频初步了解候选人，确认基本信息和意向",
   homework: "分配技术作业或案例分析，评估实际能力",
   team_interview: "与团队成员进行深度技术面试和文化匹配评估",
+  consultant_review: "外部顾问或专家对候选人进行独立评估和分析",
   final_interview: "最终决策面试，通常由高层或HR参与",
   offer: "发放录用通知，进行薪资谈判",
 };
@@ -63,6 +65,11 @@ const STAGE_ATTACHMENT_TYPES: Record<string, Array<{ value: string; label: strin
     { value: "recording", label: "面试录音" },
     { value: "transcript", label: "转录文本" },
     { value: "note", label: "面试笔记" },
+    { value: "other", label: "其他" },
+  ],
+  consultant_review: [
+    { value: "note", label: "顾问评估报告" },
+    { value: "transcript", label: "沟通记录" },
     { value: "other", label: "其他" },
   ],
   final_interview: [

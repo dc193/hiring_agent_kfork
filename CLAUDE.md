@@ -59,10 +59,10 @@ Raw Data (behaviors, statements, choices)
 8. **attachments** - Files stored in Blob
 9. **interview_notes** - Interviewer feedback
 
-### Interview Pipeline (6 stages)
+### Interview Pipeline (7 stages)
 
 ```
-resume_review → phone_screen → homework → team_interview → final_interview → offer
+resume_review → phone_screen → homework → team_interview → consultant_review → final_interview → offer
 ```
 
 ---

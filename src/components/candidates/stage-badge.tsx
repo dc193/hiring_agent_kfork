@@ -5,6 +5,7 @@ const STAGE_LABELS: Record<string, string> = {
   phone_screen: "电话面试",
   homework: "作业",
   team_interview: "Team 面试",
+  consultant_review: "外部顾问",
   final_interview: "终面",
   offer: "Offer",
 };
@@ -16,6 +17,7 @@ const STAGE_VARIANTS: Record<string, BadgeVariant> = {
   phone_screen: "info",
   homework: "warning",
   team_interview: "purple",
+  consultant_review: "outline",
   final_interview: "destructive",
   offer: "success",
 };

@@ -5,6 +5,7 @@ const PIPELINE_STAGES = [
   "phone_screen",
   "homework",
   "team_interview",
+  "consultant_review",
   "final_interview",
   "offer",
 ] as const;
@@ -14,6 +15,7 @@ const STAGE_LABELS: Record<string, string> = {
   phone_screen: "电话面试",
   homework: "作业",
   team_interview: "Team 面试",
+  consultant_review: "外部顾问",
   final_interview: "终面",
   offer: "Offer",
 };

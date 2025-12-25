@@ -89,3 +89,61 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// PUT update a specific field of stage configuration
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { stage, stageSummaryPrompt } = body;
+
+    if (!stage) {
+      return NextResponse.json(
+        { success: false, error: "Stage is required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if config exists for this stage
+    const [existing] = await db
+      .select()
+      .from(pipelineStageConfigs)
+      .where(eq(pipelineStageConfigs.stage, stage));
+
+    if (existing) {
+      // Update existing config
+      await db
+        .update(pipelineStageConfigs)
+        .set({
+          stageSummaryPrompt,
+          updatedAt: new Date(),
+        })
+        .where(eq(pipelineStageConfigs.stage, stage));
+    } else {
+      // Create new config with just the summary prompt
+      const stageDisplayNames: Record<string, string> = {
+        resume_review: "简历筛选",
+        phone_screen: "电话面试",
+        homework: "作业",
+        team_interview: "Team 面试",
+        consultant_review: "外部顾问",
+        final_interview: "终面",
+        offer: "Offer",
+      };
+      const displayName = stageDisplayNames[stage] || stage;
+
+      await db.insert(pipelineStageConfigs).values({
+        stage,
+        displayName,
+        stageSummaryPrompt,
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error updating stage config:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to update stage configuration" },
+      { status: 500 }
+    );
+  }
+}

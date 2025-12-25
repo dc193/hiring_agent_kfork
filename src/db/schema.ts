@@ -541,6 +541,9 @@ export const pipelineStageConfigs = pgTable("pipeline_stage_configs", {
   // 默认分析 Prompt
   defaultAnalysisPrompt: text("default_analysis_prompt"),
 
+  // 阶段总结 Prompt (用于生成阶段性总结报告)
+  stageSummaryPrompt: text("stage_summary_prompt"),
+
   // 阶段特定的评估维度
   evaluationDimensions: jsonb("evaluation_dimensions").$type<Array<{
     name: string;

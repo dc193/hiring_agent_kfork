@@ -4,6 +4,7 @@ import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { Settings as SettingsIcon } from "lucide-react";
 import { StageConfigList } from "@/components/settings/stage-config-list";
 import { ResumeEvaluationConfig } from "@/components/settings/resume-evaluation-config";
+import { StageSummaryConfig } from "@/components/settings/stage-summary-config";
 
 // Force dynamic rendering - don't cache this page
 export const dynamic = "force-dynamic";
@@ -123,6 +124,23 @@ export default async function SettingsPage() {
       {/* Resume Evaluation Prompt */}
       <Section title="简历评估配置" className="mb-6">
         <ResumeEvaluationConfig initialPrompt={resumeEvaluationPrompt} />
+      </Section>
+
+      {/* Stage Summary Prompts */}
+      <Section title="阶段总结配置" className="mb-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-zinc-500 mb-6">
+              配置每个阶段的总结生成 Prompt。点击候选人阶段页面的「生成总结」按钮时，会使用对应阶段的 Prompt 收集所有材料并生成综合评估报告。
+            </p>
+            <StageSummaryConfig
+              stages={stageConfigs.map(c => ({
+                stage: c.stage,
+                stageSummaryPrompt: (c as { stageSummaryPrompt?: string | null }).stageSummaryPrompt
+              }))}
+            />
+          </CardContent>
+        </Card>
       </Section>
 
       {/* Pipeline Stage Configurations */}

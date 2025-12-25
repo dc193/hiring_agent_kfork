@@ -593,6 +593,24 @@ export const processingJobs = pgTable("processing_jobs", {
 });
 
 // ============================================
+// Table 20: global_settings (全局设置)
+// 存储系统级配置
+// ============================================
+export const globalSettings = pgTable("global_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  key: varchar("key", { length: 100 }).notNull().unique(),
+  value: text("value"),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Global setting keys
+export const GLOBAL_SETTING_KEYS = {
+  RESUME_EVALUATION_PROMPT: "resume_evaluation_prompt",
+} as const;
+
+// ============================================
 // Bug status enum
 // ============================================
 export const BUG_STATUSES = [
@@ -731,3 +749,5 @@ export type PipelineStageConfig = typeof pipelineStageConfigs.$inferSelect;
 export type NewPipelineStageConfig = typeof pipelineStageConfigs.$inferInsert;
 export type ProcessingJob = typeof processingJobs.$inferSelect;
 export type NewProcessingJob = typeof processingJobs.$inferInsert;
+export type GlobalSetting = typeof globalSettings.$inferSelect;
+export type NewGlobalSetting = typeof globalSettings.$inferInsert;

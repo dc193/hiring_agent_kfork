@@ -1,7 +1,9 @@
-import { db, pipelineStageConfigs, PIPELINE_STAGES } from "@/db";
+import { db, pipelineStageConfigs, globalSettings, PIPELINE_STAGES, GLOBAL_SETTING_KEYS } from "@/db";
+import { eq } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { Settings as SettingsIcon } from "lucide-react";
 import { StageConfigList } from "@/components/settings/stage-config-list";
+import { ResumeEvaluationConfig } from "@/components/settings/resume-evaluation-config";
 
 // Force dynamic rendering - don't cache this page
 export const dynamic = "force-dynamic";
@@ -66,6 +68,19 @@ export default async function SettingsPage() {
     db.select().from(pipelineStageConfigs)
   );
 
+  // Get resume evaluation prompt
+  let resumeEvaluationPrompt: string | null = null;
+  try {
+    const [setting] = await db
+      .select()
+      .from(globalSettings)
+      .where(eq(globalSettings.key, GLOBAL_SETTING_KEYS.RESUME_EVALUATION_PROMPT));
+    resumeEvaluationPrompt = setting?.value || null;
+  } catch (error) {
+    // Table might not exist yet
+    console.log("Could not fetch resume evaluation prompt:", error);
+  }
+
   // Debug: log what we got from the database
   console.log("Existing configs from DB:", existingConfigs.length, "items");
   existingConfigs.forEach((c) => {
@@ -104,6 +119,11 @@ export default async function SettingsPage() {
           </p>
         </div>
       </div>
+
+      {/* Resume Evaluation Prompt */}
+      <Section title="简历评估配置" className="mb-6">
+        <ResumeEvaluationConfig initialPrompt={resumeEvaluationPrompt} />
+      </Section>
 
       {/* Pipeline Stage Configurations */}
       <Section title="Pipeline 阶段配置" className="mb-6">

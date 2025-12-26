@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { db, candidates, candidateProfiles, candidatePreferences, attachments, interviewNotes, stagePrompts, templateStages, promptReferenceFiles } from "@/db";
+import { db, candidates, attachments, stagePrompts, templateStages, promptReferenceFiles } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
-import { ContextSource } from "@/db/schema";
 
 const anthropic = new Anthropic();
+
+// Content block types for Claude API
+type TextBlock = { type: "text"; text: string };
+type DocumentBlock = {
+  type: "document";
+  source: {
+    type: "base64";
+    media_type: "application/pdf";
+    data: string;
+  };
+};
+type ImageBlock = {
+  type: "image";
+  source: {
+    type: "base64";
+    media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+    data: string;
+  };
+};
+type ContentBlock = TextBlock | DocumentBlock | ImageBlock;
 
 // 支持的文档类型（Claude Vision API 支持）
 const SUPPORTED_DOCUMENT_TYPES = [
@@ -44,107 +63,83 @@ function isTextFile(mimeType: string | null, fileName: string): boolean {
   );
 }
 
-// 使用 Claude Vision API 提取文档内容
-async function extractDocumentContent(
+// 创建文档 content block（原生 PDF 支持）
+async function createDocumentBlock(
   blobUrl: string,
   mimeType: string,
   fileName: string
-): Promise<string> {
+): Promise<ContentBlock[]> {
   try {
     const response = await fetch(blobUrl);
     const buffer = await response.arrayBuffer();
     const base64Content = Buffer.from(buffer).toString("base64");
 
-    const extractResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: mimeType as "application/pdf",
-                data: base64Content,
-              },
-            },
-            {
-              type: "text",
-              text: `请提取这个文档(${fileName})的所有文本内容。保留原有的结构和格式。只返回提取的文本内容，不要添加任何解释。`,
-            },
-          ],
+    return [
+      { type: "text", text: `\n### 文档: ${fileName}\n` },
+      {
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: mimeType as "application/pdf",
+          data: base64Content,
         },
-      ],
-    });
-
-    return extractResponse.content[0].type === "text"
-      ? extractResponse.content[0].text
-      : "[文档内容提取失败]";
+      },
+    ];
   } catch (error) {
-    // 检查是否为 token 限制错误
-    if (error instanceof Error && error.message.includes("token")) {
-      throw new Error(`文档 ${fileName} 内容过大，超出 token 限制。请减少选择的文件数量。`);
-    }
-    console.error(`Error extracting document content from ${fileName}:`, error);
-    return `[文档内容提取失败: ${error instanceof Error ? error.message : "未知错误"}]`;
+    console.error(`Error loading document ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法加载文档]` }];
   }
 }
 
-// 使用 Claude Vision API 描述图片内容
-async function extractImageContent(
+// 创建图片 content block（原生图片支持）
+async function createImageBlock(
   blobUrl: string,
   mimeType: string,
   fileName: string
-): Promise<string> {
+): Promise<ContentBlock[]> {
   try {
     const response = await fetch(blobUrl);
     const buffer = await response.arrayBuffer();
     const base64Content = Buffer.from(buffer).toString("base64");
 
-    const extractResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: base64Content,
-              },
-            },
-            {
-              type: "text",
-              text: `请详细描述这张图片(${fileName})的内容。如果图片包含文字，请提取所有文字内容。`,
-            },
-          ],
+    return [
+      { type: "text", text: `\n### 图片: ${fileName}\n` },
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: base64Content,
         },
-      ],
-    });
-
-    return extractResponse.content[0].type === "text"
-      ? extractResponse.content[0].text
-      : "[图片内容提取失败]";
+      },
+    ];
   } catch (error) {
-    if (error instanceof Error && error.message.includes("token")) {
-      throw new Error(`图片 ${fileName} 过大，超出 token 限制。请减少选择的文件数量。`);
-    }
-    console.error(`Error extracting image content from ${fileName}:`, error);
-    return `[图片内容提取失败: ${error instanceof Error ? error.message : "未知错误"}]`;
+    console.error(`Error loading image ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法加载图片]` }];
   }
 }
 
-// Build context from specifically selected attachments
-async function buildContextFromSelectedAttachments(
+// 创建文本文件 content block
+async function createTextBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const content = await response.text();
+    return [{ type: "text", text: `\n### ${fileName}\n\n${content}` }];
+  } catch (error) {
+    console.error(`Error loading text file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法加载文件内容]` }];
+  }
+}
+
+// Build content blocks from specifically selected attachments (native document support)
+async function buildContentBlocksFromSelectedAttachments(
   candidateId: string,
   attachmentIds: string[]
-): Promise<string> {
-  const contextParts: string[] = [];
+): Promise<ContentBlock[]> {
+  const contentBlocks: ContentBlock[] = [];
 
   // Get the selected attachments
   const selectedAttachments = await db
@@ -160,7 +155,7 @@ async function buildContextFromSelectedAttachments(
   const filteredAttachments = selectedAttachments.filter(a => attachmentIds.includes(a.id));
 
   if (filteredAttachments.length === 0) {
-    return "[没有选择的文件]";
+    return [{ type: "text", text: "[没有选择的文件]" }];
   }
 
   // Group by stage for better organization (handle null pipelineStage)
@@ -173,9 +168,9 @@ async function buildContextFromSelectedAttachments(
     byStage[stageKey].push(att);
   }
 
-  // Build context for each stage
+  // Build content blocks for each stage
   for (const [stage, stageAttachments] of Object.entries(byStage)) {
-    contextParts.push(`## 阶段: ${stage}`);
+    contentBlocks.push({ type: "text", text: `\n## 阶段: ${stage}\n` });
 
     for (const attachment of stageAttachments) {
       const mimeType = attachment.mimeType;
@@ -183,186 +178,24 @@ async function buildContextFromSelectedAttachments(
 
       if (isTextFile(mimeType, fileName)) {
         // 纯文本文件：直接读取
-        try {
-          const response = await fetch(attachment.blobUrl);
-          const content = await response.text();
-          contextParts.push(`### ${fileName}\n\n${content}`);
-        } catch {
-          contextParts.push(`### ${fileName}\n\n[无法加载文件内容]`);
-        }
+        const blocks = await createTextBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
       } else if (isSupportedDocument(mimeType)) {
-        // 文档类型（PDF）：使用 Claude Vision API 提取内容
-        const content = await extractDocumentContent(
-          attachment.blobUrl,
-          mimeType!,
-          fileName
-        );
-        contextParts.push(`### ${fileName}\n\n${content}`);
+        // 文档类型（PDF）：使用原生文档块
+        const blocks = await createDocumentBlock(attachment.blobUrl, mimeType!, fileName);
+        contentBlocks.push(...blocks);
       } else if (isSupportedImage(mimeType)) {
-        // 图片类型：使用 Claude Vision API 描述内容
-        const content = await extractImageContent(
-          attachment.blobUrl,
-          mimeType!,
-          fileName
-        );
-        contextParts.push(`### ${fileName}\n\n[图片内容描述]\n${content}`);
+        // 图片类型：使用原生图片块
+        const blocks = await createImageBlock(attachment.blobUrl, mimeType!, fileName);
+        contentBlocks.push(...blocks);
       } else {
         // 不支持的文件类型（音视频等）
-        contextParts.push(`### ${fileName}\n\n[${attachment.type} 文件，不支持内容提取（如音视频文件）]`);
+        contentBlocks.push({ type: "text", text: `\n### ${fileName}\n\n[${attachment.type} 文件，不支持内容提取（如音视频文件）]` });
       }
     }
   }
 
-  return contextParts.join("\n\n---\n\n");
-}
-
-// Build context based on selected sources
-async function buildContext(
-  candidateId: string,
-  currentStage: string,
-  contextSources: ContextSource[]
-): Promise<string> {
-  const contextParts: string[] = [];
-
-  // Get candidate data
-  const [candidate] = await db
-    .select()
-    .from(candidates)
-    .where(eq(candidates.id, candidateId));
-
-  if (!candidate) {
-    throw new Error("Candidate not found");
-  }
-
-  for (const source of contextSources) {
-    switch (source) {
-      case "resume":
-        if (candidate.resumeRawText) {
-          contextParts.push(`## 简历原文\n\n${candidate.resumeRawText}`);
-        }
-        break;
-
-      case "profile":
-        const [profile] = await db
-          .select()
-          .from(candidateProfiles)
-          .where(eq(candidateProfiles.candidateId, candidateId));
-
-        if (profile) {
-          contextParts.push(`## 候选人画像 (Profile)\n\n${JSON.stringify(profile, null, 2)}`);
-        }
-        break;
-
-      case "preference":
-        const [preference] = await db
-          .select()
-          .from(candidatePreferences)
-          .where(eq(candidatePreferences.candidateId, candidateId));
-
-        if (preference) {
-          contextParts.push(`## 候选人偏好 (Preference)\n\n${JSON.stringify(preference, null, 2)}`);
-        }
-        break;
-
-      case "stage_attachments":
-        const stageFiles = await db
-          .select()
-          .from(attachments)
-          .where(
-            and(
-              eq(attachments.candidateId, candidateId),
-              eq(attachments.pipelineStage, currentStage)
-            )
-          );
-
-        if (stageFiles.length > 0) {
-          const filesList = stageFiles.map((f) => `- ${f.fileName} (${f.type})`).join("\n");
-          contextParts.push(`## 当前阶段附件\n\n${filesList}`);
-
-          // Try to fetch text content from text files
-          for (const file of stageFiles) {
-            if (file.mimeType?.startsWith("text/") || file.mimeType === "application/json") {
-              try {
-                const response = await fetch(file.blobUrl);
-                const content = await response.text();
-                contextParts.push(`### ${file.fileName}\n\n${content}`);
-              } catch {
-                // Skip if can't fetch
-              }
-            }
-          }
-        }
-        break;
-
-      case "history_attachments":
-        const historyFiles = await db
-          .select()
-          .from(attachments)
-          .where(eq(attachments.candidateId, candidateId));
-
-        const nonCurrentFiles = historyFiles.filter(
-          (f) => f.pipelineStage !== currentStage
-        );
-
-        if (nonCurrentFiles.length > 0) {
-          const filesList = nonCurrentFiles
-            .map((f) => `- [${f.pipelineStage}] ${f.fileName} (${f.type})`)
-            .join("\n");
-          contextParts.push(`## 历史阶段附件\n\n${filesList}`);
-        }
-        break;
-
-      case "history_reports":
-        const allAttachments = await db
-          .select()
-          .from(attachments)
-          .where(eq(attachments.candidateId, candidateId));
-
-        const aiReports = allAttachments.filter(
-          (f) =>
-            f.description?.includes("AI") ||
-            f.fileName.includes("AI") ||
-            f.mimeType === "text/markdown"
-        );
-
-        if (aiReports.length > 0) {
-          contextParts.push(`## 历史 AI 报告`);
-          for (const report of aiReports) {
-            if (
-              report.mimeType?.startsWith("text/") ||
-              report.mimeType === "text/markdown"
-            ) {
-              try {
-                const response = await fetch(report.blobUrl);
-                const content = await response.text();
-                contextParts.push(`### ${report.fileName}\n\n${content}`);
-              } catch {
-                contextParts.push(`### ${report.fileName}\n\n[无法加载内容]`);
-              }
-            }
-          }
-        }
-        break;
-
-      case "interview_notes":
-        const notes = await db
-          .select()
-          .from(interviewNotes)
-          .where(eq(interviewNotes.candidateId, candidateId));
-
-        if (notes.length > 0) {
-          contextParts.push(`## 面试记录`);
-          for (const note of notes) {
-            contextParts.push(
-              `### ${note.stage} - ${note.interviewer || "Unknown"}\n评分: ${note.rating || "N/A"}\n\n${note.content || ""}`
-            );
-          }
-        }
-        break;
-    }
-  }
-
-  return contextParts.join("\n\n---\n\n");
+  return contentBlocks;
 }
 
 export async function POST(
@@ -431,87 +264,51 @@ export async function POST(
       }
     }
 
-    // Build context from selected attachments
-    let candidateContext: string;
-    if (selectedAttachmentIds && selectedAttachmentIds.length > 0) {
-      // Use specifically selected attachments
-      candidateContext = await buildContextFromSelectedAttachments(candidateId, selectedAttachmentIds);
-    } else {
-      // No files selected, provide minimal context
-      candidateContext = "[没有选择候选人材料]";
-    }
+    // Build content blocks array for native document support
+    const contentBlocks: ContentBlock[] = [];
 
-    // Get reference files for this prompt
+    // 1. Add instructions as text block
+    contentBlocks.push({ type: "text", text: prompt.instructions });
+
+    // 2. Get and add reference files as native content blocks
     const referenceFiles = await db
       .select()
       .from(promptReferenceFiles)
       .where(eq(promptReferenceFiles.promptId, promptId));
 
-    // Build reference content from files
-    let referenceContentText = "";
     if (referenceFiles.length > 0) {
-      const refContentParts: string[] = [];
+      contentBlocks.push({ type: "text", text: "\n\n---\n\n## 参考资料\n" });
+
       for (const refFile of referenceFiles) {
         const mimeType = refFile.mimeType;
         const fileName = refFile.fileName;
 
         if (isTextFile(mimeType, fileName)) {
-          // 纯文本文件：直接读取
-          try {
-            const response = await fetch(refFile.blobUrl);
-            const content = await response.text();
-            refContentParts.push(`### ${fileName}\n\n${content}`);
-          } catch {
-            refContentParts.push(`### ${fileName}\n\n[无法加载文件内容]`);
-          }
+          const blocks = await createTextBlock(refFile.blobUrl, fileName);
+          contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
-          // 文档类型（PDF）：使用 Claude Vision API 提取内容
-          const content = await extractDocumentContent(
-            refFile.blobUrl,
-            mimeType!,
-            fileName
-          );
-          refContentParts.push(`### ${fileName}\n\n${content}`);
+          const blocks = await createDocumentBlock(refFile.blobUrl, mimeType!, fileName);
+          contentBlocks.push(...blocks);
         } else if (isSupportedImage(mimeType)) {
-          // 图片类型：使用 Claude Vision API 描述内容
-          const content = await extractImageContent(
-            refFile.blobUrl,
-            mimeType!,
-            fileName
-          );
-          refContentParts.push(`### ${fileName}\n\n[图片内容描述]\n${content}`);
+          const blocks = await createImageBlock(refFile.blobUrl, mimeType!, fileName);
+          contentBlocks.push(...blocks);
         } else {
-          // 不支持的文件类型
-          refContentParts.push(`### ${fileName}\n\n[不支持的文件类型，无法读取内容]`);
+          contentBlocks.push({ type: "text", text: `\n### ${fileName}\n\n[不支持的文件类型，无法读取内容]` });
         }
       }
-      referenceContentText = refContentParts.join("\n\n");
     }
 
-    // Build full prompt with reference content and candidate materials
-    let fullPrompt = prompt.instructions;
+    // 3. Add candidate materials as native content blocks
+    contentBlocks.push({ type: "text", text: `\n\n---\n\n## 候选人材料 - ${candidate.name}\n` });
 
-    // Add reference files content (template-level) if exists
-    if (referenceContentText) {
-      fullPrompt += `
-
----
-
-## 参考资料
-
-${referenceContentText}`;
+    if (selectedAttachmentIds && selectedAttachmentIds.length > 0) {
+      const candidateBlocks = await buildContentBlocksFromSelectedAttachments(candidateId, selectedAttachmentIds);
+      contentBlocks.push(...candidateBlocks);
+    } else {
+      contentBlocks.push({ type: "text", text: "[没有选择候选人材料]" });
     }
 
-    // Add candidate materials
-    fullPrompt += `
-
----
-
-## 候选人材料 - ${candidate.name}
-
-${candidateContext}`;
-
-    // Call Claude API with optional system prompt and extended thinking
+    // Call Claude API with native content blocks and extended thinking
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 16000,
@@ -523,7 +320,7 @@ ${candidateContext}`;
       messages: [
         {
           role: "user",
-          content: fullPrompt,
+          content: contentBlocks,
         },
       ],
     });

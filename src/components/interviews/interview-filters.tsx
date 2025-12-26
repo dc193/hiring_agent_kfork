@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { INTERVIEW_SESSION_STATUSES, PIPELINE_STAGES, INTERVIEW_TYPES } from "@/db/schema";
+import { INTERVIEW_SESSION_STATUSES, INTERVIEW_TYPES } from "@/db/schema";
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: "已安排",
@@ -13,16 +13,6 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
   cancelled: "已取消",
   no_show: "未出席",
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  resume_review: "简历筛选",
-  phone_screen: "电话面试",
-  homework: "作业",
-  team_interview: "Team 面试",
-  consultant_review: "外部顾问",
-  final_interview: "终面",
-  offer: "Offer",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -35,7 +25,11 @@ const TYPE_LABELS: Record<string, string> = {
   case_study: "案例分析",
 };
 
-export function InterviewFilters() {
+interface InterviewFiltersProps {
+  stages?: { name: string; displayName: string }[];
+}
+
+export function InterviewFilters({ stages = [] }: InterviewFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showFilters, setShowFilters] = useState(false);
@@ -117,9 +111,9 @@ export function InterviewFilters() {
                   className="w-full px-3 py-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm"
                 >
                   <option value="">全部阶段</option>
-                  {PIPELINE_STAGES.map((stage) => (
-                    <option key={stage} value={stage}>
-                      {STAGE_LABELS[stage]}
+                  {stages.map((stage) => (
+                    <option key={stage.name} value={stage.name}>
+                      {stage.displayName}
                     </option>
                   ))}
                 </select>

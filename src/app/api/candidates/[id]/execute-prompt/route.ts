@@ -309,12 +309,14 @@ export async function POST(
     }
 
     // Call Claude API with native content blocks and extended thinking
+    // max_tokens needs to be high enough to accommodate both thinking and response
+    // For complex tasks like generating interview questions, we need substantial output space
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 16000,
+      max_tokens: 32000,
       thinking: {
         type: "enabled",
-        budget_tokens: 10000,
+        budget_tokens: 8000,
       },
       ...(stageSystemPrompt && { system: stageSystemPrompt }),
       messages: [

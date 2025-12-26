@@ -11,6 +11,7 @@ interface StageWithPrompts {
   name: string;
   displayName: string;
   description?: string | null;
+  systemPrompt?: string | null;
   orderIndex: number;
   prompts: {
     id?: string;
@@ -39,6 +40,7 @@ const EMPTY_STAGE: StageWithPrompts = {
   name: "",
   displayName: "",
   description: "",
+  systemPrompt: "",
   orderIndex: 0,
   prompts: [],
 };
@@ -315,6 +317,24 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
                         placeholder="描述这个阶段的目的..."
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                        阶段系统指令 (可选)
+                      </label>
+                      <textarea
+                        value={stage.systemPrompt || ""}
+                        onChange={(e) =>
+                          updateStage(stageIndex, "systemPrompt", e.target.value)
+                        }
+                        placeholder="当在此阶段执行 AI 分析时，这个系统指令会作为通用背景信息传递给 AI..."
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-zinc-500 mt-1">
+                        这个指令会在该阶段的所有 AI 分析中使用
+                      </p>
                     </div>
 
                     {/* Prompts */}

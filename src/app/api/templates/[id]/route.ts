@@ -97,6 +97,7 @@ export async function PUT(
             name: stage.name,
             displayName: stage.displayName || stage.name,
             description: stage.description || null,
+            systemPrompt: stage.systemPrompt || null,
             orderIndex: i,
           })
           .returning();

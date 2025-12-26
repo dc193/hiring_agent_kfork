@@ -1,11 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { db, candidates, candidateProfiles, candidatePreferences, attachments, interviewNotes, stagePrompts } from "@/db";
+import { db, candidates, candidateProfiles, candidatePreferences, attachments, interviewNotes, stagePrompts, templateStages } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import { ContextSource } from "@/db/schema";
 
 const anthropic = new Anthropic();
+
+// Build context from specifically selected attachments
+async function buildContextFromSelectedAttachments(
+  candidateId: string,
+  attachmentIds: string[]
+): Promise<string> {
+  const contextParts: string[] = [];
+
+  // Get the selected attachments
+  const selectedAttachments = await db
+    .select()
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.candidateId, candidateId),
+      )
+    );
+
+  // Filter to only selected IDs
+  const filteredAttachments = selectedAttachments.filter(a => attachmentIds.includes(a.id));
+
+  if (filteredAttachments.length === 0) {
+    return "[没有选择的文件]";
+  }
+
+  // Group by stage for better organization
+  const byStage: Record<string, typeof filteredAttachments> = {};
+  for (const att of filteredAttachments) {
+    if (!byStage[att.pipelineStage]) {
+      byStage[att.pipelineStage] = [];
+    }
+    byStage[att.pipelineStage].push(att);
+  }
+
+  // Build context for each stage
+  for (const [stage, stageAttachments] of Object.entries(byStage)) {
+    contextParts.push(`## 阶段: ${stage}`);
+
+    for (const attachment of stageAttachments) {
+      const isTextFile =
+        attachment.mimeType?.startsWith("text/") ||
+        attachment.mimeType === "application/json" ||
+        attachment.fileName.endsWith(".md") ||
+        attachment.fileName.endsWith(".txt") ||
+        attachment.fileName.endsWith(".json");
+
+      if (isTextFile) {
+        try {
+          const response = await fetch(attachment.blobUrl);
+          const content = await response.text();
+          contextParts.push(`### ${attachment.fileName}\n\n${content}`);
+        } catch {
+          contextParts.push(`### ${attachment.fileName}\n\n[无法加载文件内容]`);
+        }
+      } else {
+        // For non-text files, just list them
+        contextParts.push(`### ${attachment.fileName}\n\n[${attachment.type} 文件，无法读取文本内容]`);
+      }
+    }
+  }
+
+  return contextParts.join("\n\n---\n\n");
+}
 
 // Build context based on selected sources
 async function buildContext(
@@ -163,7 +226,7 @@ export async function POST(
   try {
     const { id: candidateId } = await params;
     const body = await request.json();
-    const { promptId, stage } = body;
+    const { promptId, stage, selectedAttachmentIds } = body;
 
     if (!promptId || !stage) {
       return NextResponse.json(
@@ -198,12 +261,37 @@ export async function POST(
       );
     }
 
-    // Build context
-    const context = await buildContext(
-      candidateId,
-      stage,
-      prompt.contextSources || []
-    );
+    // Get stage system prompt if candidate has a template
+    let stageSystemPrompt: string | null = null;
+    if (candidate.templateId) {
+      const [templateStage] = await db
+        .select()
+        .from(templateStages)
+        .where(
+          and(
+            eq(templateStages.templateId, candidate.templateId),
+            eq(templateStages.name, stage)
+          )
+        );
+
+      if (templateStage?.systemPrompt) {
+        stageSystemPrompt = templateStage.systemPrompt;
+      }
+    }
+
+    // Build context - use selected attachments if provided, otherwise use default context sources
+    let context: string;
+    if (selectedAttachmentIds && selectedAttachmentIds.length > 0) {
+      // Use specifically selected attachments
+      context = await buildContextFromSelectedAttachments(candidateId, selectedAttachmentIds);
+    } else {
+      // Use default context sources from prompt configuration
+      context = await buildContext(
+        candidateId,
+        stage,
+        prompt.contextSources || []
+      );
+    }
 
     // Build full prompt
     const fullPrompt = `${prompt.instructions}
@@ -214,10 +302,11 @@ export async function POST(
 
 ${context}`;
 
-    // Call Claude API
+    // Call Claude API with optional system prompt
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
+      ...(stageSystemPrompt && { system: stageSystemPrompt }),
       messages: [
         {
           role: "user",

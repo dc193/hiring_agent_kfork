@@ -713,6 +713,24 @@ export function StageAttachments({
                           )}
                         </Button>
                       )}
+                      {/* PDF: Open in new tab for viewing; Others: Download */}
+                      {attachment.mimeType === "application/pdf" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <a
+                            href={attachment.blobUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="在新标签页中查看"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -724,6 +742,7 @@ export function StageAttachments({
                           target="_blank"
                           rel="noopener noreferrer"
                           download={attachment.fileName}
+                          title="下载"
                         >
                           <Download className="w-4 h-4" />
                         </a>

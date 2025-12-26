@@ -198,6 +198,15 @@ export default async function StagePage({
       .orderBy(desc(attachments.createdAt))
   );
 
+  // Get ALL attachments for the candidate (for file selection in AI analysis)
+  const allAttachments = await safeQuery<Attachment>(() =>
+    db
+      .select()
+      .from(attachments)
+      .where(eq(attachments.candidateId, id))
+      .orderBy(desc(attachments.createdAt))
+  );
+
   // Get interview sessions for this stage (with safe query for new table)
   const stageSessions = await safeQuery<InterviewSession>(() =>
     db
@@ -304,6 +313,9 @@ export default async function StagePage({
             candidateName={candidate.name}
             stage={stage}
             prompts={stagePromptsData}
+            existingAttachments={stageAttachments}
+            allAttachments={allAttachments}
+            stagesList={stagesList}
           />
         </Section>
       )}

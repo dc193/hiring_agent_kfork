@@ -55,6 +55,7 @@ export const templateStages = pgTable("template_stages", {
   name: varchar("name", { length: 255 }).notNull(),
   displayName: varchar("display_name", { length: 255 }).notNull(),
   description: text("description"),
+  systemPrompt: text("system_prompt"), // 阶段系统指令，用于AI分析时的通用指令
   orderIndex: integer("order_index").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

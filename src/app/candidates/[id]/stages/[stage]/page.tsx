@@ -93,17 +93,31 @@ export default async function StagePage({
 }) {
   const { id, stage } = await params;
 
-  // Validate stage
-  if (!PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number])) {
-    notFound();
-  }
-
+  // First get the candidate to check their template
   const [candidate] = await db
     .select()
     .from(candidates)
     .where(eq(candidates.id, id));
 
   if (!candidate) {
+    notFound();
+  }
+
+  // Validate stage against template stages or default stages
+  let validStages: string[] = [];
+  if (candidate.templateId) {
+    const templateStagesData = await safeQuery(() =>
+      db
+        .select()
+        .from(templateStages)
+        .where(eq(templateStages.templateId, candidate.templateId!))
+    );
+    validStages = templateStagesData.map(s => s.name);
+  } else {
+    validStages = [...PIPELINE_STAGES];
+  }
+
+  if (!validStages.includes(stage)) {
     notFound();
   }
 

@@ -9,7 +9,7 @@ interface Template {
   id: string;
   name: string;
   description: string | null;
-  stages: { id: string; displayName: string }[];
+  stages: { id: string; name: string; displayName: string }[];
 }
 
 interface TemplateSelectorProps {
@@ -39,9 +39,9 @@ export function TemplateSelector({ candidateId, candidateName }: TemplateSelecto
   const selectTemplate = async (templateId: string) => {
     setSelecting(true);
     try {
-      // Get the first stage of the template
+      // Get the first stage of the template (use name for internal routing, not displayName)
       const template = templates.find((t) => t.id === templateId);
-      const firstStageName = template?.stages[0]?.displayName || "initial";
+      const firstStageName = template?.stages[0]?.name || "initial";
 
       // Update candidate with template and set to first stage
       const response = await fetch(`/api/candidates/${candidateId}`, {

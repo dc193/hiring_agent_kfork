@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, File, Music, Video, Image, Download, Eye, Bot } from "lucide-react";
-import { Button, Badge, Card, CardContent } from "@/components/ui";
+import { Button, Badge } from "@/components/ui";
 
 interface Attachment {
   id: string;
@@ -75,7 +75,7 @@ function getTypeBadge(type: string) {
 export function AttachmentsTimeline({ attachments }: AttachmentsTimelineProps) {
   if (attachments.length === 0) {
     return (
-      <div className="text-center py-8 text-zinc-500">
+      <div className="text-center py-6 text-zinc-500 text-sm">
         暂无附件
       </div>
     );
@@ -92,78 +92,72 @@ export function AttachmentsTimeline({ attachments }: AttachmentsTimelineProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {Object.entries(groupedByDate).map(([date, dayAttachments]) => (
         <div key={date}>
-          <div className="text-sm font-medium text-zinc-500 mb-3">{date}</div>
-          <div className="space-y-3">
+          <div className="text-xs font-medium text-zinc-500 mb-2">{date}</div>
+          <div className="space-y-2">
             {dayAttachments.map((attachment) => (
-              <Card key={attachment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-1">
-                      {getFileIcon(attachment.mimeType, attachment.type)}
+              <div
+                key={attachment.id}
+                className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              >
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 mt-0.5">
+                    {getFileIcon(attachment.mimeType, attachment.type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[140px]" title={attachment.fileName}>
+                        {attachment.fileName}
+                      </span>
+                      {getTypeBadge(attachment.type)}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                          {attachment.fileName}
-                        </span>
-                        {getTypeBadge(attachment.type)}
-                        {attachment.pipelineStage && (
-                          <Badge variant="outline" className="text-xs">
-                            {attachment.pipelineStage}
-                          </Badge>
-                        )}
-                      </div>
-                      {attachment.description && (
-                        <p className="text-sm text-zinc-500 mt-1 truncate">
-                          {attachment.description}
-                        </p>
+                    {attachment.pipelineStage && (
+                      <Badge variant="outline" className="text-xs mt-1">
+                        {attachment.pipelineStage}
+                      </Badge>
+                    )}
+                    {attachment.description && (
+                      <p className="text-xs text-zinc-500 mt-1 truncate" title={attachment.description}>
+                        {attachment.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5 text-xs text-zinc-400">
+                      <span>{formatDate(attachment.createdAt)}</span>
+                      {attachment.fileSize && (
+                        <span>{formatFileSize(attachment.fileSize)}</span>
                       )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-zinc-400">
-                        <span>{formatDate(attachment.createdAt)}</span>
-                        {attachment.fileSize && (
-                          <span>{formatFileSize(attachment.fileSize)}</span>
-                        )}
-                        {attachment.tags && attachment.tags.length > 0 && (
-                          <div className="flex gap-1">
-                            {attachment.tags.map((tag, i) => (
-                              <span key={i} className="bg-zinc-100 dark:bg-zinc-700 px-1.5 py-0.5 rounded">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {(attachment.mimeType?.includes("pdf") ||
-                        attachment.mimeType?.startsWith("text/") ||
-                        attachment.mimeType?.startsWith("image/")) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                        >
-                          <a href={attachment.blobUrl} target="_blank" rel="noopener noreferrer">
-                            <Eye className="w-4 h-4" />
-                          </a>
-                        </Button>
-                      )}
+                  </div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {(attachment.mimeType?.includes("pdf") ||
+                      attachment.mimeType?.startsWith("text/") ||
+                      attachment.mimeType?.startsWith("image/")) && (
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="h-7 w-7 p-0"
                         asChild
                       >
-                        <a href={attachment.blobUrl} download={attachment.fileName}>
-                          <Download className="w-4 h-4" />
+                        <a href={attachment.blobUrl} target="_blank" rel="noopener noreferrer">
+                          <Eye className="w-3.5 h-3.5" />
                         </a>
                       </Button>
-                    </div>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      asChild
+                    >
+                      <a href={attachment.blobUrl} download={attachment.fileName}>
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
         </div>

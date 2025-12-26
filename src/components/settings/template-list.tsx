@@ -206,14 +206,9 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
                             {stage.prompts.map((prompt) => (
                               <div
                                 key={prompt.id}
-                                className="text-xs text-zinc-600 dark:text-zinc-400 flex items-center gap-2"
+                                className="text-xs text-zinc-600 dark:text-zinc-400"
                               >
                                 <span>📝 {prompt.name}</span>
-                                {prompt.contextSources && prompt.contextSources.length > 0 && (
-                                  <span className="text-zinc-400">
-                                    (上下文: {prompt.contextSources.length} 项)
-                                  </span>
-                                )}
                               </div>
                             ))}
                           </div>

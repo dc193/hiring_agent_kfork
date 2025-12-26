@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Users, Upload } from "lucide-react";
-import { db, candidates } from "@/db";
+import { db, candidates, pipelineTemplates } from "@/db";
 import { desc, eq } from "drizzle-orm";
 import {
   PageLayout,
@@ -30,17 +30,27 @@ export default async function CandidatesPage({
   const params = await searchParams;
   const statusFilter = params.status || "active";
 
-  // Build query based on status filter
+  // Build query based on status filter with template join
   let allCandidates;
+  const baseQuery = db
+    .select({
+      id: candidates.id,
+      name: candidates.name,
+      email: candidates.email,
+      status: candidates.status,
+      pipelineStage: candidates.pipelineStage,
+      skills: candidates.skills,
+      createdAt: candidates.createdAt,
+      templateId: candidates.templateId,
+      templateName: pipelineTemplates.name,
+    })
+    .from(candidates)
+    .leftJoin(pipelineTemplates, eq(candidates.templateId, pipelineTemplates.id));
+
   if (statusFilter === "all") {
-    allCandidates = await db
-      .select()
-      .from(candidates)
-      .orderBy(desc(candidates.createdAt));
+    allCandidates = await baseQuery.orderBy(desc(candidates.createdAt));
   } else {
-    allCandidates = await db
-      .select()
-      .from(candidates)
+    allCandidates = await baseQuery
       .where(eq(candidates.status, statusFilter))
       .orderBy(desc(candidates.createdAt));
   }
@@ -77,6 +87,7 @@ export default async function CandidatesPage({
             <TableHeader>
               <TableRow>
                 <TableHead>Candidate</TableHead>
+                <TableHead>Template</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Stage</TableHead>
                 <TableHead>Skills</TableHead>
@@ -92,6 +103,17 @@ export default async function CandidatesPage({
                 >
                   <TableCell>
                     <CandidateCell name={candidate.name} email={candidate.email} />
+                  </TableCell>
+                  <TableCell>
+                    {candidate.templateName ? (
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                        {candidate.templateName}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                        未选择
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={candidate.status} />

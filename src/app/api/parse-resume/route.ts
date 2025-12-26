@@ -6,6 +6,36 @@ import { db, candidates, workExperiences, educations, projects, candidateProfile
 
 const anthropic = new Anthropic();
 
+// Clean JSON string to fix common issues from LLM output
+function cleanJsonString(str: string): string {
+  // Remove trailing commas before ] or }
+  let cleaned = str.replace(/,(\s*[}\]])/g, '$1');
+  // Remove any BOM or invisible characters
+  cleaned = cleaned.replace(/^\uFEFF/, '');
+  return cleaned;
+}
+
+// Safely parse JSON with error recovery
+function safeJsonParse(str: string): unknown {
+  const jsonMatch = str.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON object found in response");
+  }
+
+  let jsonStr = cleanJsonString(jsonMatch[0]);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Try more aggressive cleaning
+    // Remove any control characters
+    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, ' ');
+    // Fix common quote issues
+    jsonStr = jsonStr.replace(/'/g, '"');
+    return JSON.parse(jsonStr);
+  }
+}
+
 const RESUME_PARSE_PROMPT = `You are an expert resume parser. Extract structured information from the following resume text.
 
 Return a JSON object with the following structure:
@@ -185,16 +215,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       ? parseResponse.content[0].text
       : "";
 
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // Extract and parse JSON from response
+    let parsedData;
+    try {
+      parsedData = safeJsonParse(responseText);
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError, "Response:", responseText.substring(0, 500));
       return NextResponse.json(
         { success: false, error: "Failed to parse resume structure" },
         { status: 500 }
       );
     }
-
-    const parsedData = JSON.parse(jsonMatch[0]);
 
     // ============================================
     // Generate Profile Analysis (档案画像)
@@ -216,9 +247,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
         ? profileResponse.content[0].text
         : "";
 
-      const profileJsonMatch = profileText.match(/\{[\s\S]*\}/);
-      if (profileJsonMatch) {
-        profileData = JSON.parse(profileJsonMatch[0]);
+      try {
+        profileData = safeJsonParse(profileText);
+      } catch (profileParseError) {
+        console.error("Profile JSON parse error:", profileParseError);
+        // Continue without profile data
       }
     } catch (profileError) {
       console.error("Profile analysis error:", profileError);

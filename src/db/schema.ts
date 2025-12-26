@@ -185,12 +185,18 @@ export const pipelineHistory = pgTable("pipeline_history", {
 
 // ============================================
 // Table 6: attachments (附件 - 指向 Blob)
-// 解耦架构：附件属于候选人，不强制关联阶段
+// 解耦架构：附件属于候选人，可关联阶段/prompt用于断链检测
 // ============================================
 export const attachments = pgTable("attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
   candidateId: uuid("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
-  pipelineStage: varchar("pipeline_stage", { length: 50 }), // 可选，仅用于显示分组
+  // 关联字段 - 用于断链检测
+  stageId: uuid("stage_id").references(() => templateStages.id, { onDelete: "set null" }), // 关联的阶段ID
+  sourcePromptId: uuid("source_prompt_id").references(() => stagePrompts.id, { onDelete: "set null" }), // 如果是AI生成的，记录来源prompt
+  // 快照字段 - 记录创建时的名称，用于断链后显示
+  pipelineStage: varchar("pipeline_stage", { length: 50 }), // 创建时的阶段名称快照
+  promptNameSnapshot: varchar("prompt_name_snapshot", { length: 255 }), // 创建时的prompt名称快照
+  // 文件信息
   type: varchar("type", { length: 50 }).notNull(), // resume/recording/transcript/homework/note/ai_analysis/other
   fileName: varchar("file_name", { length: 500 }).notNull(),
   fileSize: integer("file_size"), // 文件大小（字节）
@@ -198,7 +204,6 @@ export const attachments = pgTable("attachments", {
   blobUrl: varchar("blob_url", { length: 1000 }).notNull(),
   description: text("description"), // 附件描述/备注
   tags: jsonb("tags").$type<string[]>().default([]), // 标签，用于分类和搜索
-  sourcePromptId: uuid("source_prompt_id"), // 如果是AI生成的，记录来源prompt
   uploadedBy: varchar("uploaded_by", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

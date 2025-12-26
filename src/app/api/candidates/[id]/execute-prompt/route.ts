@@ -262,8 +262,10 @@ export async function POST(
       );
     }
 
-    // Get stage system prompt if candidate has a template
+    // Get stage info if candidate has a template
     let stageSystemPrompt: string | null = null;
+    let stageId: string | null = null;
+    let stageDisplayName: string = stage;
     if (candidate.templateId) {
       const [templateStage] = await db
         .select()
@@ -275,8 +277,12 @@ export async function POST(
           )
         );
 
-      if (templateStage?.systemPrompt) {
-        stageSystemPrompt = templateStage.systemPrompt;
+      if (templateStage) {
+        stageId = templateStage.id;
+        stageDisplayName = templateStage.displayName;
+        if (templateStage.systemPrompt) {
+          stageSystemPrompt = templateStage.systemPrompt;
+        }
       }
     }
 
@@ -373,12 +379,15 @@ ${candidateContext}`;
       { access: "public" }
     );
 
-    // Save attachment record (解耦架构：记录 sourcePromptId，pipelineStage 仅作参考)
+    // Save attachment record with stageId for broken link detection
     const [attachment] = await db
       .insert(attachments)
       .values({
         candidateId,
-        pipelineStage: stage, // 可选，仅用于显示分组
+        stageId, // 关联的阶段ID，用于断链检测
+        sourcePromptId: promptId, // 关联的prompt ID
+        pipelineStage: stageDisplayName, // 快照：创建时的阶段名称
+        promptNameSnapshot: prompt.name, // 快照：创建时的prompt名称
         type: "ai_analysis",
         fileName,
         fileSize: blob.size,
@@ -386,7 +395,6 @@ ${candidateContext}`;
         blobUrl: uploadedBlob.url,
         description: `AI 生成 - ${prompt.name}`,
         tags: ["AI分析", prompt.name],
-        sourcePromptId: promptId,
       })
       .returning();
 

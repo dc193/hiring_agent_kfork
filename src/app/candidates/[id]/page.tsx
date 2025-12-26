@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { db, candidates, workExperiences, educations, projects, templateStages, attachments } from "@/db";
+import { db, candidates, workExperiences, educations, projects, templateStages, stagePrompts, attachments } from "@/db";
 import { eq, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
 import {
@@ -33,8 +33,9 @@ export default async function CandidateDetailPage({
     notFound();
   }
 
-  // Fetch template stages if candidate has a template
+  // Fetch template stages and prompts if candidate has a template (for broken link detection)
   let stages: { name: string; displayName: string }[] = [];
+  let stagesWithPrompts: { id: string; displayName: string; prompts: { id: string; name: string }[] }[] = [];
   const hasTemplate = !!candidate.templateId;
 
   if (candidate.templateId) {
@@ -47,6 +48,22 @@ export default async function CandidateDetailPage({
     stages = templateStagesData.map(s => ({
       name: s.name,
       displayName: s.displayName,
+    }));
+
+    // Fetch prompts for all stages
+    const stageIds = templateStagesData.map(s => s.id);
+    const allPrompts = stageIds.length > 0
+      ? await db
+          .select()
+          .from(stagePrompts)
+      : [];
+
+    stagesWithPrompts = templateStagesData.map(s => ({
+      id: s.id,
+      displayName: s.displayName,
+      prompts: allPrompts
+        .filter(p => p.stageId === s.id)
+        .map(p => ({ id: p.id, name: p.name })),
     }));
   }
 
@@ -184,7 +201,10 @@ export default async function CandidateDetailPage({
         <div className="w-80 flex-shrink-0">
           <div className="sticky top-6">
             <Section title="所有附件">
-              <AttachmentsTimeline attachments={candidateAttachments} />
+              <AttachmentsTimeline
+                attachments={candidateAttachments}
+                stagesWithPrompts={stagesWithPrompts}
+              />
             </Section>
           </div>
         </div>

@@ -139,11 +139,19 @@ function RelinkModal({
 
   const selectedStage = stagesWithPrompts.find(s => s.id === selectedStageId);
 
+  // Check if this is just a name mismatch (stageId still valid)
+  const isNameMismatchOnly = attachment.stageId &&
+    stagesWithPrompts.some(s => s.id === attachment.stageId) &&
+    attachment.pipelineStage &&
+    !stagesWithPrompts.some(s => s.displayName === attachment.pipelineStage);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">重新关联</h2>
+          <h2 className="text-lg font-semibold">
+            {isNameMismatchOnly ? "更新阶段标签" : "重新关联"}
+          </h2>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="w-4 h-4" />
           </Button>
@@ -152,7 +160,13 @@ function RelinkModal({
         <div className="space-y-4">
           <div className="text-sm text-zinc-500 mb-4">
             文件: <span className="font-medium text-zinc-700 dark:text-zinc-300">{attachment.fileName}</span>
-            {attachment.promptNameSnapshot && (
+            {attachment.pipelineStage && (
+              <div className="mt-1">
+                当前标签: <span className="text-amber-600">{attachment.pipelineStage}</span>
+                {isNameMismatchOnly && " (名称已变更)"}
+              </div>
+            )}
+            {attachment.promptNameSnapshot && !isNameMismatchOnly && (
               <div className="mt-1">
                 原 Prompt: <span className="text-amber-600">{attachment.promptNameSnapshot}</span> (已删除/修改)
               </div>
@@ -404,15 +418,13 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                             <span className="text-xs text-amber-600 dark:text-amber-400">
                               {promptBroken ? "Prompt 已失效" : stageBroken ? "阶段已删除" : "阶段名称已修改"}
                             </span>
-                            {hasBrokenLink && attachment.type === "ai_analysis" && (
-                              <button
-                                onClick={() => setRelinkingAttachment(attachment)}
-                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
-                              >
-                                <Link2 className="w-3 h-3" />
-                                重新关联
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setRelinkingAttachment(attachment)}
+                              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
+                            >
+                              <Link2 className="w-3 h-3" />
+                              {stageNameMismatch && !hasBrokenLink ? "更新标签" : "重新关联"}
+                            </button>
                           </div>
                         )}
 

@@ -88,38 +88,46 @@ function getTypeBadge(type: string) {
 function checkBrokenLinks(
   attachment: Attachment,
   stagesWithPrompts: StageWithPrompts[]
-): { stageBroken: boolean; promptBroken: boolean; stageNameMismatch: boolean } {
+): { stageBroken: boolean; promptBroken: boolean; stageNameMismatch: boolean; templateMissing: boolean } {
   let stageBroken = false;
   let promptBroken = false;
   let stageNameMismatch = false;
+  let templateMissing = false;
 
-  // Check if pipelineStage (snapshot) matches any current stage name or displayName
-  // This applies to ALL attachments
-  if (attachment.pipelineStage && stagesWithPrompts.length > 0) {
-    const stageMatches = stagesWithPrompts.some(
-      s => s.displayName === attachment.pipelineStage
-    );
-    stageNameMismatch = !stageMatches;
-  }
-
-  // For AI analysis attachments, also check stageId and sourcePromptId references
-  if (attachment.type === "ai_analysis") {
-    // Check stage link by ID
-    if (attachment.stageId) {
-      const stageExists = stagesWithPrompts.some(s => s.id === attachment.stageId);
-      stageBroken = !stageExists;
+  // Check if template is missing but attachment has stage info
+  if (stagesWithPrompts.length === 0) {
+    // No template - if attachment has pipelineStage or stageId, it's orphaned
+    if (attachment.pipelineStage || attachment.stageId) {
+      templateMissing = true;
     }
-
-    // Check prompt link
-    if (attachment.sourcePromptId) {
-      const promptExists = stagesWithPrompts.some(s =>
-        s.prompts.some(p => p.id === attachment.sourcePromptId)
+  } else {
+    // Template exists - check if pipelineStage matches any current stage
+    if (attachment.pipelineStage) {
+      const stageMatches = stagesWithPrompts.some(
+        s => s.displayName === attachment.pipelineStage
       );
-      promptBroken = !promptExists;
+      stageNameMismatch = !stageMatches;
+    }
+
+    // For AI analysis attachments, also check stageId and sourcePromptId references
+    if (attachment.type === "ai_analysis") {
+      // Check stage link by ID
+      if (attachment.stageId) {
+        const stageExists = stagesWithPrompts.some(s => s.id === attachment.stageId);
+        stageBroken = !stageExists;
+      }
+
+      // Check prompt link
+      if (attachment.sourcePromptId) {
+        const promptExists = stagesWithPrompts.some(s =>
+          s.prompts.some(p => p.id === attachment.sourcePromptId)
+        );
+        promptBroken = !promptExists;
+      }
     }
   }
 
-  return { stageBroken, promptBroken, stageNameMismatch };
+  return { stageBroken, promptBroken, stageNameMismatch, templateMissing };
 }
 
 // Relink Modal Component
@@ -372,9 +380,9 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
             <div className="text-xs font-medium text-zinc-500 mb-2">{date}</div>
             <div className="space-y-2">
               {dayAttachments.map((attachment) => {
-                const { stageBroken, promptBroken, stageNameMismatch } = checkBrokenLinks(attachment, stagesWithPrompts);
+                const { stageBroken, promptBroken, stageNameMismatch, templateMissing } = checkBrokenLinks(attachment, stagesWithPrompts);
                 const hasBrokenLink = stageBroken || promptBroken;
-                const hasWarning = hasBrokenLink || stageNameMismatch;
+                const hasWarning = hasBrokenLink || stageNameMismatch || templateMissing;
 
                 return (
                   <div
@@ -400,11 +408,11 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                         {/* Stage display with broken link indicator */}
                         {attachment.pipelineStage && (
                           <div className="flex items-center gap-1 mt-1">
-                            <Badge variant="outline" className={`text-xs ${stageNameMismatch ? "border-amber-400 text-amber-600" : ""}`}>
+                            <Badge variant="outline" className={`text-xs ${(stageNameMismatch || templateMissing) ? "border-amber-400 text-amber-600" : ""}`}>
                               {attachment.pipelineStage}
                             </Badge>
-                            {(stageBroken || stageNameMismatch) && (
-                              <span className="text-amber-500" title={stageNameMismatch ? "阶段名称已修改" : "阶段已被删除"}>
+                            {(stageBroken || stageNameMismatch || templateMissing) && (
+                              <span className="text-amber-500" title={templateMissing ? "模板已删除" : stageNameMismatch ? "阶段名称已修改" : "阶段已被删除"}>
                                 <AlertTriangle className="w-3 h-3" />
                               </span>
                             )}
@@ -412,19 +420,21 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                         )}
 
                         {/* Warning messages */}
-                        {(hasBrokenLink || stageNameMismatch) && (
+                        {(hasBrokenLink || stageNameMismatch || templateMissing) && (
                           <div className="flex items-center gap-1 mt-1.5">
                             <AlertTriangle className="w-3 h-3 text-amber-500" />
                             <span className="text-xs text-amber-600 dark:text-amber-400">
-                              {promptBroken ? "Prompt 已失效" : stageBroken ? "阶段已删除" : "阶段名称已修改"}
+                              {templateMissing ? "模板已删除" : promptBroken ? "Prompt 已失效" : stageBroken ? "阶段已删除" : "阶段名称已修改"}
                             </span>
-                            <button
-                              onClick={() => setRelinkingAttachment(attachment)}
-                              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
-                            >
-                              <Link2 className="w-3 h-3" />
-                              {stageNameMismatch && !hasBrokenLink ? "更新标签" : "重新关联"}
-                            </button>
+                            {!templateMissing && (
+                              <button
+                                onClick={() => setRelinkingAttachment(attachment)}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
+                              >
+                                <Link2 className="w-3 h-3" />
+                                {stageNameMismatch && !hasBrokenLink ? "更新标签" : "重新关联"}
+                              </button>
+                            )}
                           </div>
                         )}
 

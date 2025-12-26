@@ -1,4 +1,4 @@
-import { db, candidates, bugReports, featureRequests, roadmapItems } from "@/db";
+import { db, candidates, bugReports, featureRequests, roadmapItems, pipelineTemplates } from "@/db";
 import { desc, eq, gte } from "drizzle-orm";
 import { PageLayout } from "@/components/ui";
 import {
@@ -46,8 +46,16 @@ export default async function Home() {
     safeQuery(() => db.select().from(candidates).where(eq(candidates.status, "active"))),
     safeQuery(() =>
       db
-        .select()
+        .select({
+          id: candidates.id,
+          name: candidates.name,
+          pipelineStage: candidates.pipelineStage,
+          createdAt: candidates.createdAt,
+          templateId: candidates.templateId,
+          templateName: pipelineTemplates.name,
+        })
         .from(candidates)
+        .leftJoin(pipelineTemplates, eq(candidates.templateId, pipelineTemplates.id))
         .where(eq(candidates.status, "active"))
         .orderBy(desc(candidates.createdAt))
         .limit(5)

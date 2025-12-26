@@ -1,7 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ParsedResume } from "@/types/resume";
+import { Button } from "@/components/ui";
+import { X } from "lucide-react";
+
+interface Template {
+  id: string;
+  name: string;
+  description: string | null;
+  stages: { id: string; displayName: string }[];
+}
 
 interface ResumeUploaderProps {
   onParsed: (resume: ParsedResume) => void;
@@ -12,15 +21,42 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  const handleFile = useCallback(async (file: File) => {
+  // Load templates when modal opens
+  useEffect(() => {
+    if (showTemplateModal && templates.length === 0) {
+      setLoadingTemplates(true);
+      fetch("/api/templates")
+        .then((res) => res.json())
+        .then((data) => {
+          setTemplates(data);
+          if (data.length > 0) {
+            setSelectedTemplate(data[0].id);
+          }
+        })
+        .catch(console.error)
+        .finally(() => setLoadingTemplates(false));
+    }
+  }, [showTemplateModal, templates.length]);
+
+  const uploadFile = useCallback(async (file: File, templateId: string | null) => {
     setError(null);
     setFileName(file.name);
     setIsLoading(true);
+    setShowTemplateModal(false);
+    setPendingFile(null);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (templateId) {
+        formData.append("templateId", templateId);
+      }
 
       const response = await fetch("/api/parse-resume", {
         method: "POST",
@@ -40,6 +76,11 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
       setIsLoading(false);
     }
   }, [onParsed]);
+
+  const handleFile = useCallback(async (file: File) => {
+    setPendingFile(file);
+    setShowTemplateModal(true);
+  }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -137,6 +178,110 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
       {error && (
         <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {/* Template Selection Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-700">
+              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                选择流程模板
+              </h3>
+              <button
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  setPendingFile(null);
+                }}
+                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+              >
+                <X className="w-5 h-5 text-zinc-500" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {pendingFile && (
+                <p className="text-sm text-zinc-500 mb-4">
+                  文件: <span className="font-medium">{pendingFile.name}</span>
+                </p>
+              )}
+
+              {loadingTemplates ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-zinc-500">加载模板...</p>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-zinc-500 mb-4">还没有创建流程模板</p>
+                  <p className="text-sm text-zinc-400">
+                    请先在设置页面创建模板，或直接上传（使用默认流程）
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {templates.map((template) => (
+                    <label
+                      key={template.id}
+                      className={`block p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedTemplate === template.id
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                          : "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="template"
+                          value={template.id}
+                          checked={selectedTemplate === template.id}
+                          onChange={() => setSelectedTemplate(template.id)}
+                          className="mt-1"
+                        />
+                        <div>
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                            {template.name}
+                          </span>
+                          {template.description && (
+                            <p className="text-xs text-zinc-500 mt-1">
+                              {template.description}
+                            </p>
+                          )}
+                          <p className="text-xs text-zinc-400 mt-1">
+                            {template.stages.length} 个阶段：
+                            {template.stages.map((s) => s.displayName).join(" → ")}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-zinc-200 dark:border-zinc-700">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowTemplateModal(false);
+                  setPendingFile(null);
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => {
+                  if (pendingFile) {
+                    uploadFile(pendingFile, selectedTemplate);
+                  }
+                }}
+                disabled={templates.length > 0 && !selectedTemplate}
+              >
+                {templates.length === 0 ? "使用默认流程上传" : "上传"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

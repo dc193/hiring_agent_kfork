@@ -35,10 +35,65 @@ export const ATTACHMENT_TYPES = [
 export type AttachmentType = typeof ATTACHMENT_TYPES[number];
 
 // ============================================
+// Table: pipeline_templates (流程模板)
+// ============================================
+export const pipelineTemplates = pgTable("pipeline_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  isDefault: varchar("is_default", { length: 10 }).default("false"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table: template_stages (模板阶段)
+// ============================================
+export const templateStages = pgTable("template_stages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").notNull().references(() => pipelineTemplates.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  description: text("description"),
+  orderIndex: integer("order_index").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 上下文来源类型
+// ============================================
+export const CONTEXT_SOURCES = [
+  "resume",           // 简历原文
+  "profile",          // Profile（候选人画像）
+  "preference",       // Preference（候选人偏好）
+  "stage_attachments", // 当前阶段附件
+  "history_attachments", // 历史阶段附件
+  "history_reports",  // 历史 AI 报告
+  "interview_notes",  // 面试记录
+] as const;
+
+export type ContextSource = typeof CONTEXT_SOURCES[number];
+
+// ============================================
+// Table: stage_prompts (阶段Prompt配置)
+// ============================================
+export const stagePrompts = pgTable("stage_prompts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stageId: uuid("stage_id").notNull().references(() => templateStages.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  instructions: text("instructions").notNull(),
+  contextSources: jsonb("context_sources").$type<ContextSource[]>().default([]),
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
 // Table 1: candidates (候选人主表)
 // ============================================
 export const candidates = pgTable("candidates", {
   id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").references(() => pipelineTemplates.id),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
@@ -731,3 +786,9 @@ export type PipelineStageConfig = typeof pipelineStageConfigs.$inferSelect;
 export type NewPipelineStageConfig = typeof pipelineStageConfigs.$inferInsert;
 export type ProcessingJob = typeof processingJobs.$inferSelect;
 export type NewProcessingJob = typeof processingJobs.$inferInsert;
+export type PipelineTemplate = typeof pipelineTemplates.$inferSelect;
+export type NewPipelineTemplate = typeof pipelineTemplates.$inferInsert;
+export type TemplateStage = typeof templateStages.$inferSelect;
+export type NewTemplateStage = typeof templateStages.$inferInsert;
+export type StagePrompt = typeof stagePrompts.$inferSelect;
+export type NewStagePrompt = typeof stagePrompts.$inferInsert;

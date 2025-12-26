@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles } from "@/db";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, templateStages } from "@/db";
+import { eq, asc } from "drizzle-orm";
 
 const anthropic = new Anthropic();
 
@@ -115,12 +116,28 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const templateId = formData.get("templateId") as string | null;
 
     if (!file) {
       return NextResponse.json(
         { success: false, error: "No file provided" },
         { status: 400 }
       );
+    }
+
+    // Get first stage name from template if provided
+    let initialStage = "resume_review";
+    if (templateId) {
+      const stages = await db
+        .select()
+        .from(templateStages)
+        .where(eq(templateStages.templateId, templateId))
+        .orderBy(asc(templateStages.orderIndex))
+        .limit(1);
+
+      if (stages.length > 0) {
+        initialStage = stages[0].name;
+      }
     }
 
     // Read file content
@@ -229,6 +246,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     try {
       // 1. Create candidate record
       const [newCandidate] = await db.insert(candidates).values({
+        templateId: templateId || null,
         name: parsedData.basicInfo?.name || "Unknown",
         email: parsedData.basicInfo?.email || null,
         phone: parsedData.basicInfo?.phone || null,
@@ -240,7 +258,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
         skills: parsedData.skills || [],
         resumeRawText: textContent,
         status: "active",
-        pipelineStage: "resume_review",
+        pipelineStage: initialStage,
       }).returning();
 
       candidateId = newCandidate.id;

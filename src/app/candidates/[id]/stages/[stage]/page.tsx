@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { db, candidates, attachments, interviewSessions, PIPELINE_STAGES, Attachment, InterviewSession } from "@/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, candidates, attachments, interviewSessions, PIPELINE_STAGES, Attachment, InterviewSession, templateStages, stagePrompts, StagePrompt } from "@/db";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
-import { StageAttachments } from "@/components/stages";
+import { StageAttachments, AIAnalysisSection } from "@/components/stages";
 
 // Safe query helper for tables that may not exist yet
 async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = []): Promise<T[]> {
@@ -107,6 +107,57 @@ export default async function StagePage({
     notFound();
   }
 
+  // Get prompts for this stage from template
+  let stagePromptsData: StagePrompt[] = [];
+  let templateStageData: { displayName: string; description: string | null } | null = null;
+
+  if (candidate.templateId) {
+    // Find the stage in the template that matches the current stage name
+    const templateStage = await safeQuery(() =>
+      db
+        .select()
+        .from(templateStages)
+        .where(
+          and(
+            eq(templateStages.templateId, candidate.templateId!),
+            eq(templateStages.name, stage)
+          )
+        )
+    );
+
+    if (templateStage.length > 0) {
+      templateStageData = {
+        displayName: templateStage[0].displayName,
+        description: templateStage[0].description,
+      };
+
+      // Get prompts for this stage
+      stagePromptsData = await safeQuery(() =>
+        db
+          .select()
+          .from(stagePrompts)
+          .where(eq(stagePrompts.stageId, templateStage[0].id))
+          .orderBy(asc(stagePrompts.orderIndex))
+      );
+    }
+  }
+
+  // Get stage navigation from template or use default
+  let stagesList: { name: string; displayName: string }[] = [];
+  if (candidate.templateId) {
+    const allTemplateStages = await safeQuery(() =>
+      db
+        .select()
+        .from(templateStages)
+        .where(eq(templateStages.templateId, candidate.templateId!))
+        .orderBy(asc(templateStages.orderIndex))
+    );
+    stagesList = allTemplateStages.map((s) => ({ name: s.name, displayName: s.displayName }));
+  } else {
+    // Fall back to default stages
+    stagesList = PIPELINE_STAGES.map((s) => ({ name: s, displayName: STAGE_LABELS[s] || s }));
+  }
+
   // Get attachments for this stage (with safe query for new columns)
   const stageAttachments = await safeQuery<Attachment>(() =>
     db
@@ -135,12 +186,18 @@ export default async function StagePage({
       .orderBy(desc(interviewSessions.scheduledAt))
   );
 
-  const currentStageIndex = PIPELINE_STAGES.indexOf(stage as typeof PIPELINE_STAGES[number]);
-  const prevStage = currentStageIndex > 0 ? PIPELINE_STAGES[currentStageIndex - 1] : null;
-  const nextStage = currentStageIndex < PIPELINE_STAGES.length - 1 ? PIPELINE_STAGES[currentStageIndex + 1] : null;
+  // Use template stages or default stages for navigation
+  const currentStageIndex = stagesList.findIndex((s) => s.name === stage);
+  const prevStage = currentStageIndex > 0 ? stagesList[currentStageIndex - 1] : null;
+  const nextStage = currentStageIndex < stagesList.length - 1 ? stagesList[currentStageIndex + 1] : null;
 
   const isCurrentStage = candidate.pipelineStage === stage;
-  const isPastStage = PIPELINE_STAGES.indexOf(candidate.pipelineStage as typeof PIPELINE_STAGES[number]) > currentStageIndex;
+  const candidateStageIndex = stagesList.findIndex((s) => s.name === candidate.pipelineStage);
+  const isPastStage = candidateStageIndex > currentStageIndex;
+
+  // Get display name and description from template or defaults
+  const stageDisplayName = templateStageData?.displayName || STAGE_LABELS[stage] || stage;
+  const stageDescription = templateStageData?.description || STAGE_DESCRIPTIONS[stage] || "";
 
   return (
     <PageLayout>
@@ -159,7 +216,7 @@ export default async function StagePage({
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-                  {STAGE_LABELS[stage]}
+                  {stageDisplayName}
                 </h1>
                 {isCurrentStage && (
                   <Badge variant="default" className="bg-blue-500">当前阶段</Badge>
@@ -168,9 +225,11 @@ export default async function StagePage({
                   <Badge variant="secondary">已完成</Badge>
                 )}
               </div>
-              <p className="text-zinc-600 dark:text-zinc-400">
-                {STAGE_DESCRIPTIONS[stage]}
-              </p>
+              {stageDescription && (
+                <p className="text-zinc-600 dark:text-zinc-400">
+                  {stageDescription}
+                </p>
+              )}
               <p className="text-sm text-zinc-500 mt-2">
                 候选人: <span className="font-medium text-zinc-700 dark:text-zinc-300">{candidate.name}</span>
               </p>
@@ -181,9 +240,9 @@ export default async function StagePage({
           <div className="flex items-center justify-between mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
             {prevStage ? (
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/candidates/${id}/stages/${prevStage}`}>
+                <Link href={`/candidates/${id}/stages/${prevStage.name}`}>
                   <ChevronLeft className="w-4 h-4 mr-1" />
-                  {STAGE_LABELS[prevStage]}
+                  {prevStage.displayName}
                 </Link>
               </Button>
             ) : (
@@ -191,8 +250,8 @@ export default async function StagePage({
             )}
             {nextStage && (
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/candidates/${id}/stages/${nextStage}`}>
-                  {STAGE_LABELS[nextStage]}
+                <Link href={`/candidates/${id}/stages/${nextStage.name}`}>
+                  {nextStage.displayName}
                   <ChevronRight className="w-4 h-4 ml-1" />
                 </Link>
               </Button>
@@ -210,6 +269,18 @@ export default async function StagePage({
           attachmentTypes={STAGE_ATTACHMENT_TYPES[stage] || STAGE_ATTACHMENT_TYPES.resume_review}
         />
       </Section>
+
+      {/* AI Analysis Section */}
+      {stagePromptsData.length > 0 && (
+        <Section title="AI 分析" className="mb-6">
+          <AIAnalysisSection
+            candidateId={id}
+            candidateName={candidate.name}
+            stage={stage}
+            prompts={stagePromptsData}
+          />
+        </Section>
+      )}
 
       {/* Interview Sessions for this stage */}
       {stageSessions.length > 0 && (

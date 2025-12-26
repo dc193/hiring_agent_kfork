@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { db, candidates, workExperiences, educations, projects, templateStages, PIPELINE_STAGES } from "@/db";
+import { db, candidates, workExperiences, educations, projects, templateStages } from "@/db";
 import { eq, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
 import {
@@ -13,6 +13,7 @@ import {
   WorkExperienceList,
   EducationList,
   ProjectsList,
+  TemplateSelector,
 } from "@/components/candidates";
 
 export default async function CandidateDetailPage({
@@ -33,6 +34,8 @@ export default async function CandidateDetailPage({
 
   // Fetch template stages if candidate has a template
   let stages: { name: string; displayName: string }[] = [];
+  const hasTemplate = !!candidate.templateId;
+
   if (candidate.templateId) {
     const templateStagesData = await db
       .select()
@@ -43,23 +46,6 @@ export default async function CandidateDetailPage({
     stages = templateStagesData.map(s => ({
       name: s.name,
       displayName: s.displayName,
-    }));
-  }
-
-  // Fallback to default stages if no template
-  if (stages.length === 0) {
-    const defaultStageLabels: Record<string, string> = {
-      resume_review: "简历筛选",
-      phone_screen: "电话面试",
-      homework: "作业",
-      team_interview: "Team 面试",
-      consultant_review: "外部顾问",
-      final_interview: "终面",
-      offer: "Offer",
-    };
-    stages = PIPELINE_STAGES.map(name => ({
-      name,
-      displayName: defaultStageLabels[name] || name,
     }));
   }
 
@@ -114,14 +100,21 @@ export default async function CandidateDetailPage({
         </CardContent>
       </Card>
 
-      {/* Pipeline Controls */}
-      <Section title="Interview Pipeline" className="mb-6">
-        <PipelineControls
-          candidateId={candidate.id}
-          currentStage={candidate.pipelineStage}
-          currentStatus={candidate.status}
-          stages={stages}
-        />
+      {/* Pipeline Controls or Template Selector */}
+      <Section title="面试流程" className="mb-6">
+        {hasTemplate && stages.length > 0 ? (
+          <PipelineControls
+            candidateId={candidate.id}
+            currentStage={candidate.pipelineStage}
+            currentStatus={candidate.status}
+            stages={stages}
+          />
+        ) : (
+          <TemplateSelector
+            candidateId={candidate.id}
+            candidateName={candidate.name}
+          />
+        )}
       </Section>
 
       {/* Navigation Tabs */}

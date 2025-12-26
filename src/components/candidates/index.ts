@@ -9,4 +9,5 @@ export { SkillsList } from "./skills-list";
 export { StageBadge } from "./stage-badge";
 export { StatusBadge } from "./status-badge";
 export { StatusFilter } from "./status-filter";
+export { TemplateSelector } from "./template-selector";
 export { WorkExperienceList } from "./work-experience-list";

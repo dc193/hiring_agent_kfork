@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { put } from "@vercel/blob";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, templateStages } from "@/db";
-import { eq, asc } from "drizzle-orm";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, attachments } from "@/db";
 
 const anthropic = new Anthropic();
 
@@ -116,7 +116,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const templateId = formData.get("templateId") as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -125,20 +124,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       );
     }
 
-    // Get first stage name from template if provided
-    let initialStage = "resume_review";
-    if (templateId) {
-      const stages = await db
-        .select()
-        .from(templateStages)
-        .where(eq(templateStages.templateId, templateId))
-        .orderBy(asc(templateStages.orderIndex))
-        .limit(1);
-
-      if (stages.length > 0) {
-        initialStage = stages[0].name;
-      }
-    }
+    // Use a placeholder stage - template will be assigned later in candidate detail page
+    const initialStage = "initial";
 
     // Read file content
     const fileBuffer = await file.arrayBuffer();
@@ -244,9 +231,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     let candidateId: string;
 
     try {
-      // 1. Create candidate record
+      // 1. Create candidate record (no template assigned - will be selected later)
       const [newCandidate] = await db.insert(candidates).values({
-        templateId: templateId || null,
+        templateId: null,
         name: parsedData.basicInfo?.name || "Unknown",
         email: parsedData.basicInfo?.email || null,
         phone: parsedData.basicInfo?.phone || null,
@@ -263,6 +250,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
 
       candidateId = newCandidate.id;
       console.log("Created candidate:", candidateId);
+
+      // 2. Upload resume file to Blob storage and create attachment
+      try {
+        const blob = await put(`resumes/${candidateId}/${file.name}`, file, {
+          access: "public",
+          contentType: fileType,
+        });
+
+        await db.insert(attachments).values({
+          candidateId,
+          pipelineStage: initialStage,
+          type: "resume",
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: fileType,
+          blobUrl: blob.url,
+          description: "简历原文",
+          uploadedBy: null,
+        });
+        console.log("Saved resume as attachment:", blob.url);
+      } catch (blobError) {
+        console.error("Failed to save resume as attachment:", blobError);
+        // Continue without failing - resume text is already saved
+      }
     } catch (dbError) {
       console.error("Database insert error:", dbError);
       throw new Error(`Failed to save candidate to database: ${dbError instanceof Error ? dbError.message : "Unknown error"}`);

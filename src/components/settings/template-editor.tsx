@@ -287,9 +287,15 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
                         type="text"
                         value={stage.displayName}
                         onChange={(e) => {
+                          const value = e.target.value;
                           // 同时更新 name 和 displayName，name 用于内部标识
-                          updateStage(stageIndex, "displayName", e.target.value);
-                          updateStage(stageIndex, "name", e.target.value);
+                          setStages(
+                            stages.map((s, i) =>
+                              i === stageIndex
+                                ? { ...s, displayName: value, name: value }
+                                : s
+                            )
+                          );
                         }}
                         placeholder="例如：简历筛选、电话面试、终面"
                         className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"

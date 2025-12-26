@@ -274,6 +274,12 @@ export async function POST(
       .from(promptReferenceFiles)
       .where(eq(promptReferenceFiles.promptId, promptId));
 
+    // 🔍 DEBUG: Log reference files info
+    console.log(`[DEBUG] Found ${referenceFiles.length} reference files for prompt ${promptId}`);
+    referenceFiles.forEach((f, i) => {
+      console.log(`[DEBUG] Reference file ${i + 1}: ${f.fileName} (${f.mimeType}, ${f.fileSize} bytes)`);
+    });
+
     if (referenceFiles.length > 0) {
       contentBlocks.push({ type: "text", text: "# 参考资料（知识库）\n\n以下是你需要参考的模板和标准文档：\n" });
 
@@ -283,17 +289,25 @@ export async function POST(
 
         if (isTextFile(mimeType, fileName)) {
           const blocks = await createTextBlock(refFile.blobUrl, fileName);
+          // 🔍 DEBUG: Log loaded content length
+          const textContent = blocks.find(b => b.type === "text" && b.text.includes(fileName));
+          console.log(`[DEBUG] Loaded text file ${fileName}: ${textContent ? textContent.text.length : 0} chars`);
           contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
           const blocks = await createDocumentBlock(refFile.blobUrl, mimeType!, fileName);
+          console.log(`[DEBUG] Loaded PDF document ${fileName}: ${blocks.length} blocks`);
           contentBlocks.push(...blocks);
         } else if (isSupportedImage(mimeType)) {
           const blocks = await createImageBlock(refFile.blobUrl, mimeType!, fileName);
+          console.log(`[DEBUG] Loaded image ${fileName}: ${blocks.length} blocks`);
           contentBlocks.push(...blocks);
         } else {
+          console.log(`[DEBUG] Unsupported file type: ${fileName} (${mimeType})`);
           contentBlocks.push({ type: "text", text: `\n### ${fileName}\n\n[不支持的文件类型，无法读取内容]` });
         }
       }
+    } else {
+      console.log(`[DEBUG] ⚠️ No reference files found for this prompt!`);
     }
 
     // 2. Add candidate materials as native content blocks
@@ -326,9 +340,26 @@ export async function POST(
     // Wait for the complete response
     const message = await stream.finalMessage();
 
-    // Extract text content
-    const textBlock = message.content.find((block) => block.type === "text");
-    const analysisResult = textBlock && textBlock.type === "text" ? textBlock.text : "";
+    // 🔍 DEBUG: Log response metadata
+    console.log(`[DEBUG] API Response:`);
+    console.log(`[DEBUG]   - stop_reason: ${message.stop_reason}`);
+    console.log(`[DEBUG]   - input_tokens: ${message.usage.input_tokens}`);
+    console.log(`[DEBUG]   - output_tokens: ${message.usage.output_tokens}`);
+    console.log(`[DEBUG]   - content blocks: ${message.content.length}`);
+    message.content.forEach((block, i) => {
+      console.log(`[DEBUG]   - block ${i + 1}: type=${block.type}, length=${block.type === "text" ? block.text.length : "N/A"}`);
+    });
+
+    // Check if output was truncated
+    if (message.stop_reason === "max_tokens") {
+      console.log(`[DEBUG] ⚠️ WARNING: Output was truncated due to max_tokens limit!`);
+    }
+
+    // Extract ALL text content (in case there are multiple text blocks)
+    const textBlocks = message.content.filter((block): block is { type: "text"; text: string } => block.type === "text");
+    const analysisResult = textBlocks.map(b => b.text).join("\n\n");
+
+    console.log(`[DEBUG] Final result length: ${analysisResult.length} chars`);
 
     // Save result as attachment
     const fileName = `${prompt.name}_${candidate.name}.md`;

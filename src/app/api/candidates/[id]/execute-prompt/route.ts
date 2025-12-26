@@ -279,28 +279,38 @@ export async function POST(
       }
     }
 
-    // Build context - use selected attachments if provided, otherwise use default context sources
-    let context: string;
+    // Build context from selected attachments
+    let candidateContext: string;
     if (selectedAttachmentIds && selectedAttachmentIds.length > 0) {
       // Use specifically selected attachments
-      context = await buildContextFromSelectedAttachments(candidateId, selectedAttachmentIds);
+      candidateContext = await buildContextFromSelectedAttachments(candidateId, selectedAttachmentIds);
     } else {
-      // Use default context sources from prompt configuration
-      context = await buildContext(
-        candidateId,
-        stage,
-        prompt.contextSources || []
-      );
+      // No files selected, provide minimal context
+      candidateContext = "[没有选择候选人材料]";
     }
 
-    // Build full prompt
-    const fullPrompt = `${prompt.instructions}
+    // Build full prompt with reference content and candidate materials
+    let fullPrompt = prompt.instructions;
+
+    // Add reference content (template-level) if exists
+    if (prompt.referenceContent) {
+      fullPrompt += `
 
 ---
 
-以下是候选人 ${candidate.name} 的相关材料：
+## 参考资料
 
-${context}`;
+${prompt.referenceContent}`;
+    }
+
+    // Add candidate materials
+    fullPrompt += `
+
+---
+
+## 候选人材料 - ${candidate.name}
+
+${candidateContext}`;
 
     // Call Claude API with optional system prompt
     const message = await anthropic.messages.create({

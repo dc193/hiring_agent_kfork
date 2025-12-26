@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { Save, X } from "lucide-react";
-import { CONTEXT_SOURCES, type ContextSource } from "@/db/schema";
+import { Save, X, FileText } from "lucide-react";
 
 interface PromptData {
   name: string;
   instructions: string;
-  contextSources: ContextSource[];
+  referenceContent?: string;
 }
 
 interface PromptEditorProps {
@@ -17,30 +16,10 @@ interface PromptEditorProps {
   onCancel: () => void;
 }
 
-const CONTEXT_SOURCE_LABELS: Record<ContextSource, { label: string; description: string }> = {
-  resume: { label: "简历原文", description: "候选人上传的简历内容" },
-  profile: { label: "Profile（候选人画像）", description: "能力、行为模式等结构化数据" },
-  preference: { label: "Preference（候选人偏好）", description: "价值观、目标、动机等" },
-  stage_attachments: { label: "当前阶段附件", description: "当前阶段上传的所有文件" },
-  history_attachments: { label: "历史阶段附件", description: "之前阶段上传的所有文件" },
-  history_reports: { label: "历史 AI 报告", description: "之前 AI 生成的分析报告" },
-  interview_notes: { label: "面试记录", description: "面试评价、问答记录等" },
-};
-
 export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
   const [name, setName] = useState(prompt?.name || "");
   const [instructions, setInstructions] = useState(prompt?.instructions || "");
-  const [contextSources, setContextSources] = useState<ContextSource[]>(
-    prompt?.contextSources || []
-  );
-
-  const toggleContextSource = (source: ContextSource) => {
-    if (contextSources.includes(source)) {
-      setContextSources(contextSources.filter((s) => s !== source));
-    } else {
-      setContextSources([...contextSources, source]);
-    }
-  };
+  const [referenceContent, setReferenceContent] = useState(prompt?.referenceContent || "");
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -52,7 +31,7 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
       return;
     }
 
-    onSave({ name, instructions, contextSources });
+    onSave({ name, instructions, referenceContent: referenceContent.trim() || undefined });
   };
 
   return (
@@ -113,37 +92,47 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
         />
       </div>
 
-      {/* Context Sources (Files) */}
+      {/* Reference Content (Template-level reference materials) */}
       <div>
-        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
-          📎 Files（上下文来源）
+        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+          <FileText className="w-4 h-4 inline mr-1" />
+          参考资料（可选）
         </label>
-        <p className="text-xs text-zinc-500 mb-4">
-          选择 AI 分析时可以参考的材料。勾选的材料会作为上下文传递给 AI。
+        <p className="text-xs text-zinc-500 mb-3">
+          在这里粘贴模板级别的参考资料内容（如评分标准、问题库、规范文档等）。这些内容会在执行 AI 分析时作为固定参考传递给 AI，适用于所有候选人。
         </p>
-        <div className="space-y-2">
-          {CONTEXT_SOURCES.map((source) => (
-            <label
-              key={source}
-              className="flex items-start gap-3 p-3 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
-            >
-              <input
-                type="checkbox"
-                checked={contextSources.includes(source)}
-                onChange={() => toggleContextSource(source)}
-                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-blue-500 focus:ring-blue-500"
-              />
-              <div>
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  {CONTEXT_SOURCE_LABELS[source].label}
-                </span>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  {CONTEXT_SOURCE_LABELS[source].description}
-                </p>
-              </div>
-            </label>
-          ))}
-        </div>
+        <textarea
+          value={referenceContent}
+          onChange={(e) => setReferenceContent(e.target.value)}
+          placeholder={`例如：
+
+=== 评分标准 ===
+- 5分：优秀，超出预期
+- 4分：良好，符合预期
+- 3分：一般，基本达标
+- 2分：欠佳，需要提升
+- 1分：不合格
+
+=== 面试问题标准 ===
+1. 技术问题应该涵盖...
+2. 行为问题应该探索...`}
+          rows={10}
+          className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+        />
+        <p className="text-xs text-zinc-400 mt-1">
+          提示：可以直接复制粘贴 .md 或 .txt 文件的内容
+        </p>
+      </div>
+
+      {/* Info about execution-time file selection */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
+          💡 关于候选人材料的选择
+        </h4>
+        <p className="text-xs text-blue-600 dark:text-blue-400">
+          候选人的具体材料（简历、面试附件等）会在<strong>执行 AI 分析时</strong>选择，而不是在这里配置。
+          当你在候选人页面点击"执行"按钮时，会弹出文件选择器让你选择要分析的候选人材料。
+        </p>
       </div>
     </div>
   );

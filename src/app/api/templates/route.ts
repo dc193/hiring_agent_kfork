@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
               stageId: newStage.id,
               name: prompt.name,
               instructions: prompt.instructions,
-              contextSources: prompt.contextSources || [],
+              referenceContent: prompt.referenceContent || null,
               orderIndex: j,
             });
           }

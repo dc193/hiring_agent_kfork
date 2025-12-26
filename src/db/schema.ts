@@ -83,7 +83,8 @@ export const stagePrompts = pgTable("stage_prompts", {
   stageId: uuid("stage_id").notNull().references(() => templateStages.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   instructions: text("instructions").notNull(),
-  contextSources: jsonb("context_sources").$type<ContextSource[]>().default([]),
+  contextSources: jsonb("context_sources").$type<ContextSource[]>().default([]), // 保留字段但不再使用
+  referenceContent: text("reference_content"), // 模板级别的参考资料内容
   orderIndex: integer("order_index").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

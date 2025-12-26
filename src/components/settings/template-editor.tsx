@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button, Card, CardContent } from "@/components/ui";
 import { Plus, Trash2, GripVertical, ChevronDown, ChevronRight, Save, X } from "lucide-react";
 import { PromptEditor } from "./prompt-editor";
-import type { PipelineTemplate, TemplateStage, StagePrompt, ContextSource } from "@/db/schema";
 
 interface StageWithPrompts {
   id?: string;
@@ -17,7 +16,7 @@ interface StageWithPrompts {
     id?: string;
     name: string;
     instructions: string;
-    contextSources?: ContextSource[] | null;
+    referenceContent?: string | null;
     orderIndex?: number;
   }[];
 }
@@ -111,7 +110,7 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
   const handlePromptSave = (prompt: {
     name: string;
     instructions: string;
-    contextSources: ContextSource[];
+    referenceContent?: string;
   }) => {
     if (!editingPrompt) return;
 
@@ -175,12 +174,11 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
       ? stage.prompts[editingPrompt.promptIndex]
       : undefined;
 
-    // Ensure contextSources is always an array
     const promptForEditor = existingPrompt
       ? {
           name: existingPrompt.name,
           instructions: existingPrompt.instructions,
-          contextSources: existingPrompt.contextSources || [],
+          referenceContent: existingPrompt.referenceContent || "",
         }
       : undefined;
 
@@ -371,9 +369,9 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
                                 <span className="font-medium text-zinc-700 dark:text-zinc-300">
                                   {prompt.name}
                                 </span>
-                                {prompt.contextSources && prompt.contextSources.length > 0 && (
+                                {prompt.referenceContent && (
                                   <span className="text-xs text-zinc-400 ml-2">
-                                    (上下文: {prompt.contextSources.length} 项)
+                                    (有参考资料)
                                   </span>
                                 )}
                               </div>

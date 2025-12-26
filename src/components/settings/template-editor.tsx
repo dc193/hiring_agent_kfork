@@ -28,9 +28,16 @@ interface TemplateData {
   stages: StageWithPrompts[];
 }
 
+// Pending files for new prompts
+interface PendingPromptFiles {
+  stageIndex: number;
+  promptName: string;
+  files: File[];
+}
+
 interface TemplateEditorProps {
   template?: TemplateData;
-  onSave: (template: TemplateData) => void;
+  onSave: (template: TemplateData, pendingFiles?: PendingPromptFiles[]) => void;
   onCancel: () => void;
 }
 
@@ -54,6 +61,7 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
     stageIndex: number;
     promptIndex: number | null;
   } | null>(null);
+  const [pendingPromptFiles, setPendingPromptFiles] = useState<PendingPromptFiles[]>([]);
 
   const toggleStageExpand = (index: number) => {
     const newExpanded = new Set(expandedStages);
@@ -106,11 +114,14 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
     );
   };
 
-  const handlePromptSave = (prompt: {
-    id?: string;
-    name: string;
-    instructions: string;
-  }) => {
+  const handlePromptSave = (
+    prompt: {
+      id?: string;
+      name: string;
+      instructions: string;
+    },
+    files?: File[]
+  ) => {
     if (!editingPrompt) return;
 
     const { stageIndex, promptIndex } = editingPrompt;
@@ -137,6 +148,17 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
       })
     );
 
+    // Store pending files if provided (for new prompts without ID)
+    if (files && files.length > 0 && !prompt.id) {
+      setPendingPromptFiles((prev) => {
+        // Remove any existing entry for this stage/prompt combination
+        const filtered = prev.filter(
+          (p) => !(p.stageIndex === stageIndex && p.promptName === prompt.name)
+        );
+        return [...filtered, { stageIndex, promptName: prompt.name, files }];
+      });
+    }
+
     setEditingPrompt(null);
   };
 
@@ -158,13 +180,16 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
       }
     }
 
-    onSave({
-      id: template?.id || "",
-      name,
-      description,
-      isDefault: template?.isDefault || "false",
-      stages: stages.map((s, i) => ({ ...s, orderIndex: i })),
-    });
+    onSave(
+      {
+        id: template?.id || "",
+        name,
+        description,
+        isDefault: template?.isDefault || "false",
+        stages: stages.map((s, i) => ({ ...s, orderIndex: i })),
+      },
+      pendingPromptFiles.length > 0 ? pendingPromptFiles : undefined
+    );
   };
 
   if (editingPrompt) {

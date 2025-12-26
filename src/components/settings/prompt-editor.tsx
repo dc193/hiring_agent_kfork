@@ -12,6 +12,14 @@ interface ReferenceFile {
   blobUrl: string;
 }
 
+// Pending file for new prompts (not yet uploaded)
+interface PendingFile {
+  id: string; // temporary client-side ID
+  file: File;
+  fileName: string;
+  fileSize: number;
+}
+
 interface PromptData {
   id?: string;
   name: string;
@@ -21,7 +29,7 @@ interface PromptData {
 
 interface PromptEditorProps {
   prompt?: PromptData;
-  onSave: (prompt: PromptData) => void;
+  onSave: (prompt: PromptData, pendingFiles?: File[]) => void;
   onCancel: () => void;
 }
 
@@ -36,12 +44,15 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
   const [name, setName] = useState(prompt?.name || "");
   const [instructions, setInstructions] = useState(prompt?.instructions || "");
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]); // For new prompts
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const promptId = prompt?.id;
+  const isNewPrompt = !promptId;
 
   // Fetch existing reference files when editing a prompt
   const fetchReferenceFiles = useCallback(async () => {
@@ -65,6 +76,29 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
     fetchReferenceFiles();
   }, [fetchReferenceFiles]);
 
+  // Add pending files for new prompts
+  const addPendingFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const newPendingFiles: PendingFile[] = Array.from(files).map((file) => ({
+      id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      file,
+      fileName: file.name,
+      fileSize: file.size,
+    }));
+
+    setPendingFiles((prev) => [...prev, ...newPendingFiles]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Remove pending file
+  const removePendingFile = (id: string) => {
+    setPendingFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  // Upload files for existing prompts
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0 || !promptId) return;
 
@@ -92,6 +126,32 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
         fileInputRef.current.value = "";
       }
     }
+  };
+
+  // Handle file selection (either pending or immediate upload)
+  const handleFileSelect = (files: FileList | null) => {
+    if (isNewPrompt) {
+      addPendingFiles(files);
+    } else {
+      handleFileUpload(files);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFileSelect(e.dataTransfer.files);
   };
 
   const handleDeleteFile = async (fileId: string) => {
@@ -124,7 +184,9 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
       return;
     }
 
-    onSave({ id: promptId, name, instructions });
+    // Pass pending files to parent for upload after prompt creation
+    const filesToUpload = pendingFiles.length > 0 ? pendingFiles.map((pf) => pf.file) : undefined;
+    onSave({ id: promptId, name, instructions }, filesToUpload);
   };
 
   return (
@@ -195,45 +257,87 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
           上传模板级别的参考资料文件（如评分标准.md、问题库.txt等）。这些文件会在执行 AI 分析时作为固定参考传递给 AI，适用于所有候选人。
         </p>
 
-        {!promptId ? (
-          <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center text-zinc-500">
-            <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">请先保存 Prompt，然后再上传参考资料文件</p>
-          </div>
-        ) : (
-          <>
-            {/* Upload area */}
-            <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-4 text-center mb-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                onChange={(e) => handleFileUpload(e.target.files)}
-                className="hidden"
-                accept=".md,.txt,.json,.csv,.pdf"
-              />
-              <Upload className="w-6 h-6 mx-auto mb-2 text-zinc-400" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    上传中...
-                  </>
-                ) : (
-                  "选择文件"
-                )}
-              </Button>
-              <p className="text-xs text-zinc-500 mt-2">
-                支持 .md, .txt, .json, .csv, .pdf 格式
-              </p>
-            </div>
+        {/* Upload area with drag & drop */}
+        <div
+          className={`border-2 border-dashed rounded-lg p-4 text-center mb-4 transition-colors ${
+            isDragging
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+              : "border-zinc-300 dark:border-zinc-700"
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            onChange={(e) => handleFileSelect(e.target.files)}
+            className="hidden"
+            accept=".md,.txt,.json,.csv,.pdf"
+          />
+          <Upload className={`w-6 h-6 mx-auto mb-2 ${isDragging ? "text-blue-500" : "text-zinc-400"}`} />
+          <p className="text-sm text-zinc-500 mb-2">
+            拖拽文件到此处，或
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                上传中...
+              </>
+            ) : (
+              "选择文件"
+            )}
+          </Button>
+          <p className="text-xs text-zinc-500 mt-2">
+            支持 .md, .txt, .json, .csv, .pdf 格式
+          </p>
+        </div>
 
-            {/* File list */}
+        {/* Pending files for new prompts */}
+        {isNewPrompt && pendingFiles.length > 0 && (
+          <div className="space-y-2 mb-4">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              以下文件将在保存 Prompt 后自动上传：
+            </p>
+            {pendingFiles.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <File className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate block">
+                      {file.fileName}
+                    </span>
+                    <p className="text-xs text-zinc-500">
+                      {formatFileSize(file.fileSize)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removePendingFile(file.id)}
+                  className="text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Existing file list for saved prompts */}
+        {!isNewPrompt && (
+          <>
             {isLoadingFiles ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />

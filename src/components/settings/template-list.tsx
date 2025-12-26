@@ -36,6 +36,13 @@ interface TemplateWithDetails extends TemplateData {
   updatedAt?: Date;
 }
 
+// Pending files for new prompts (from template-editor)
+interface PendingPromptFiles {
+  stageIndex: number;
+  promptName: string;
+  files: File[];
+}
+
 interface TemplateListProps {
   initialTemplates: TemplateWithDetails[];
 }
@@ -75,7 +82,7 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
     }
   };
 
-  const handleSave = async (template: TemplateData) => {
+  const handleSave = async (template: TemplateData, pendingFiles?: PendingPromptFiles[]) => {
     try {
       if (template.id) {
         // Update existing
@@ -102,6 +109,31 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
           // Refetch to get full data with stages
           const fullRes = await fetch(`/api/templates/${created.id}`);
           const full = await fullRes.json();
+
+          // Upload pending files if any
+          if (pendingFiles && pendingFiles.length > 0) {
+            for (const pending of pendingFiles) {
+              // Find the created prompt by matching stage index and prompt name
+              const stage = full.stages[pending.stageIndex];
+              if (stage) {
+                const prompt = stage.prompts.find(
+                  (p: { name: string }) => p.name === pending.promptName
+                );
+                if (prompt?.id) {
+                  // Upload files to this prompt
+                  for (const file of pending.files) {
+                    const formData = new FormData();
+                    formData.append("file", file);
+                    await fetch(`/api/prompts/${prompt.id}/reference-files`, {
+                      method: "POST",
+                      body: formData,
+                    });
+                  }
+                }
+              }
+            }
+          }
+
           setTemplates([...templates, full]);
         }
       }

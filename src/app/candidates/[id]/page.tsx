@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { db, candidates, workExperiences, educations, projects } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { db, candidates, workExperiences, educations, projects, templateStages, PIPELINE_STAGES } from "@/db";
+import { eq, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
 import {
   CandidateActions,
@@ -29,6 +29,38 @@ export default async function CandidateDetailPage({
 
   if (!candidate) {
     notFound();
+  }
+
+  // Fetch template stages if candidate has a template
+  let stages: { name: string; displayName: string }[] = [];
+  if (candidate.templateId) {
+    const templateStagesData = await db
+      .select()
+      .from(templateStages)
+      .where(eq(templateStages.templateId, candidate.templateId))
+      .orderBy(asc(templateStages.orderIndex));
+
+    stages = templateStagesData.map(s => ({
+      name: s.name,
+      displayName: s.displayName,
+    }));
+  }
+
+  // Fallback to default stages if no template
+  if (stages.length === 0) {
+    const defaultStageLabels: Record<string, string> = {
+      resume_review: "简历筛选",
+      phone_screen: "电话面试",
+      homework: "作业",
+      team_interview: "Team 面试",
+      consultant_review: "外部顾问",
+      final_interview: "终面",
+      offer: "Offer",
+    };
+    stages = PIPELINE_STAGES.map(name => ({
+      name,
+      displayName: defaultStageLabels[name] || name,
+    }));
   }
 
   const [work, education, project] = await Promise.all([
@@ -88,6 +120,7 @@ export default async function CandidateDetailPage({
           candidateId={candidate.id}
           currentStage={candidate.pipelineStage}
           currentStatus={candidate.status}
+          stages={stages}
         />
       </Section>
 

@@ -6,6 +6,24 @@ import { db, candidates, workExperiences, educations, projects, candidateProfile
 
 const anthropic = new Anthropic();
 
+// Type for profile analysis response
+interface ProfileAnalysisData {
+  careerStage?: string;
+  yearsOfExperience?: number;
+  hardSkills?: Array<{name: string; level: number}>;
+  softSkills?: Array<{name: string; level: number}>;
+  certifications?: string[];
+  knowledgeStructure?: {breadth: number; depth: number};
+  behaviorPatterns?: {
+    communicationStyle?: string;
+    decisionStyle?: string;
+    collaborationStyle?: string;
+    pressureResponse?: string;
+    conflictHandling?: string;
+  };
+  profileSummary?: string;
+}
+
 // Clean JSON string to fix common issues from LLM output
 function cleanJsonString(str: string): string {
   // Remove trailing commas before ] or }
@@ -216,9 +234,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       : "";
 
     // Extract and parse JSON from response
-    let parsedData;
+    let parsedData: ParsedResume;
     try {
-      parsedData = safeJsonParse(responseText);
+      parsedData = safeJsonParse(responseText) as ParsedResume;
     } catch (parseError) {
       console.error("JSON parse error:", parseError, "Response:", responseText.substring(0, 500));
       return NextResponse.json(
@@ -230,7 +248,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     // ============================================
     // Generate Profile Analysis (档案画像)
     // ============================================
-    let profileData = null;
+    let profileData: ProfileAnalysisData | null = null;
     try {
       const profileResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -248,7 +266,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
         : "";
 
       try {
-        profileData = safeJsonParse(profileText);
+        profileData = safeJsonParse(profileText) as ProfileAnalysisData;
       } catch (profileParseError) {
         console.error("Profile JSON parse error:", profileParseError);
         // Continue without profile data

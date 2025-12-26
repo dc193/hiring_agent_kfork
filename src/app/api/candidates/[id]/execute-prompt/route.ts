@@ -7,6 +7,138 @@ import { ContextSource } from "@/db/schema";
 
 const anthropic = new Anthropic();
 
+// 支持的文档类型（Claude Vision API 支持）
+const SUPPORTED_DOCUMENT_TYPES = [
+  "application/pdf",
+];
+
+// 支持的图片类型
+const SUPPORTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
+// 检查是否为支持的文档类型
+function isSupportedDocument(mimeType: string | null): boolean {
+  if (!mimeType) return false;
+  return SUPPORTED_DOCUMENT_TYPES.includes(mimeType);
+}
+
+// 检查是否为支持的图片类型
+function isSupportedImage(mimeType: string | null): boolean {
+  if (!mimeType) return false;
+  return SUPPORTED_IMAGE_TYPES.includes(mimeType);
+}
+
+// 检查是否为纯文本文件
+function isTextFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType?.startsWith("text/") ||
+    mimeType === "application/json" ||
+    fileName.endsWith(".md") ||
+    fileName.endsWith(".txt") ||
+    fileName.endsWith(".json") ||
+    fileName.endsWith(".csv")
+  );
+}
+
+// 使用 Claude Vision API 提取文档内容
+async function extractDocumentContent(
+  blobUrl: string,
+  mimeType: string,
+  fileName: string
+): Promise<string> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const base64Content = Buffer.from(buffer).toString("base64");
+
+    const extractResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: mimeType as "application/pdf",
+                data: base64Content,
+              },
+            },
+            {
+              type: "text",
+              text: `请提取这个文档(${fileName})的所有文本内容。保留原有的结构和格式。只返回提取的文本内容，不要添加任何解释。`,
+            },
+          ],
+        },
+      ],
+    });
+
+    return extractResponse.content[0].type === "text"
+      ? extractResponse.content[0].text
+      : "[文档内容提取失败]";
+  } catch (error) {
+    // 检查是否为 token 限制错误
+    if (error instanceof Error && error.message.includes("token")) {
+      throw new Error(`文档 ${fileName} 内容过大，超出 token 限制。请减少选择的文件数量。`);
+    }
+    console.error(`Error extracting document content from ${fileName}:`, error);
+    return `[文档内容提取失败: ${error instanceof Error ? error.message : "未知错误"}]`;
+  }
+}
+
+// 使用 Claude Vision API 描述图片内容
+async function extractImageContent(
+  blobUrl: string,
+  mimeType: string,
+  fileName: string
+): Promise<string> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const base64Content = Buffer.from(buffer).toString("base64");
+
+    const extractResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                data: base64Content,
+              },
+            },
+            {
+              type: "text",
+              text: `请详细描述这张图片(${fileName})的内容。如果图片包含文字，请提取所有文字内容。`,
+            },
+          ],
+        },
+      ],
+    });
+
+    return extractResponse.content[0].type === "text"
+      ? extractResponse.content[0].text
+      : "[图片内容提取失败]";
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("token")) {
+      throw new Error(`图片 ${fileName} 过大，超出 token 限制。请减少选择的文件数量。`);
+    }
+    console.error(`Error extracting image content from ${fileName}:`, error);
+    return `[图片内容提取失败: ${error instanceof Error ? error.message : "未知错误"}]`;
+  }
+}
+
 // Build context from specifically selected attachments
 async function buildContextFromSelectedAttachments(
   candidateId: string,
@@ -46,24 +178,37 @@ async function buildContextFromSelectedAttachments(
     contextParts.push(`## 阶段: ${stage}`);
 
     for (const attachment of stageAttachments) {
-      const isTextFile =
-        attachment.mimeType?.startsWith("text/") ||
-        attachment.mimeType === "application/json" ||
-        attachment.fileName.endsWith(".md") ||
-        attachment.fileName.endsWith(".txt") ||
-        attachment.fileName.endsWith(".json");
+      const mimeType = attachment.mimeType;
+      const fileName = attachment.fileName;
 
-      if (isTextFile) {
+      if (isTextFile(mimeType, fileName)) {
+        // 纯文本文件：直接读取
         try {
           const response = await fetch(attachment.blobUrl);
           const content = await response.text();
-          contextParts.push(`### ${attachment.fileName}\n\n${content}`);
+          contextParts.push(`### ${fileName}\n\n${content}`);
         } catch {
-          contextParts.push(`### ${attachment.fileName}\n\n[无法加载文件内容]`);
+          contextParts.push(`### ${fileName}\n\n[无法加载文件内容]`);
         }
+      } else if (isSupportedDocument(mimeType)) {
+        // 文档类型（PDF）：使用 Claude Vision API 提取内容
+        const content = await extractDocumentContent(
+          attachment.blobUrl,
+          mimeType!,
+          fileName
+        );
+        contextParts.push(`### ${fileName}\n\n${content}`);
+      } else if (isSupportedImage(mimeType)) {
+        // 图片类型：使用 Claude Vision API 描述内容
+        const content = await extractImageContent(
+          attachment.blobUrl,
+          mimeType!,
+          fileName
+        );
+        contextParts.push(`### ${fileName}\n\n[图片内容描述]\n${content}`);
       } else {
-        // For non-text files, just list them
-        contextParts.push(`### ${attachment.fileName}\n\n[${attachment.type} 文件，无法读取文本内容]`);
+        // 不支持的文件类型（音视频等）
+        contextParts.push(`### ${fileName}\n\n[${attachment.type} 文件，不支持内容提取（如音视频文件）]`);
       }
     }
   }
@@ -307,24 +452,37 @@ export async function POST(
     if (referenceFiles.length > 0) {
       const refContentParts: string[] = [];
       for (const refFile of referenceFiles) {
-        const isTextFile =
-          refFile.mimeType?.startsWith("text/") ||
-          refFile.mimeType === "application/json" ||
-          refFile.fileName.endsWith(".md") ||
-          refFile.fileName.endsWith(".txt") ||
-          refFile.fileName.endsWith(".json") ||
-          refFile.fileName.endsWith(".csv");
+        const mimeType = refFile.mimeType;
+        const fileName = refFile.fileName;
 
-        if (isTextFile) {
+        if (isTextFile(mimeType, fileName)) {
+          // 纯文本文件：直接读取
           try {
             const response = await fetch(refFile.blobUrl);
             const content = await response.text();
-            refContentParts.push(`### ${refFile.fileName}\n\n${content}`);
+            refContentParts.push(`### ${fileName}\n\n${content}`);
           } catch {
-            refContentParts.push(`### ${refFile.fileName}\n\n[无法加载文件内容]`);
+            refContentParts.push(`### ${fileName}\n\n[无法加载文件内容]`);
           }
+        } else if (isSupportedDocument(mimeType)) {
+          // 文档类型（PDF）：使用 Claude Vision API 提取内容
+          const content = await extractDocumentContent(
+            refFile.blobUrl,
+            mimeType!,
+            fileName
+          );
+          refContentParts.push(`### ${fileName}\n\n${content}`);
+        } else if (isSupportedImage(mimeType)) {
+          // 图片类型：使用 Claude Vision API 描述内容
+          const content = await extractImageContent(
+            refFile.blobUrl,
+            mimeType!,
+            fileName
+          );
+          refContentParts.push(`### ${fileName}\n\n[图片内容描述]\n${content}`);
         } else {
-          refContentParts.push(`### ${refFile.fileName}\n\n[非文本文件，无法读取内容]`);
+          // 不支持的文件类型
+          refContentParts.push(`### ${fileName}\n\n[不支持的文件类型，无法读取内容]`);
         }
       }
       referenceContentText = refContentParts.join("\n\n");

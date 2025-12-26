@@ -46,11 +46,9 @@ const STAGE_DESCRIPTIONS: Record<string, string> = {
 
 // Unified attachment types for all stages
 const ATTACHMENT_TYPES = [
-  { value: "resume", label: "简历" },
-  { value: "recording", label: "录音" },
   { value: "transcript", label: "转录/记录" },
-  { value: "homework", label: "作业" },
-  { value: "note", label: "笔记/备注" },
+  { value: "portfolio", label: "作品" },
+  { value: "note", label: "备注" },
   { value: "contract", label: "合同/Offer" },
   { value: "other", label: "其他" },
 ];

@@ -274,9 +274,8 @@ export function StageAttachments({
         )
       );
 
-      // Infer file type or use selected type
-      const fileType = selectedType === "other" ? inferFileType(file.type) : selectedType;
-      const result = await uploadFile(file, fileType);
+      // Use selected type directly
+      const result = await uploadFile(file, selectedType);
 
       if (result) {
         uploadedAttachments.push(result);

@@ -44,47 +44,16 @@ const STAGE_DESCRIPTIONS: Record<string, string> = {
   offer: "发放录用通知，进行薪资谈判",
 };
 
-const STAGE_ATTACHMENT_TYPES: Record<string, Array<{ value: string; label: string }>> = {
-  resume_review: [
-    { value: "resume", label: "简历" },
-    { value: "note", label: "筛选备注" },
-    { value: "other", label: "其他" },
-  ],
-  phone_screen: [
-    { value: "recording", label: "通话录音" },
-    { value: "transcript", label: "转录文本" },
-    { value: "note", label: "面试笔记" },
-    { value: "other", label: "其他" },
-  ],
-  homework: [
-    { value: "homework", label: "作业提交" },
-    { value: "note", label: "评审意见" },
-    { value: "other", label: "其他" },
-  ],
-  team_interview: [
-    { value: "recording", label: "面试录音" },
-    { value: "transcript", label: "转录文本" },
-    { value: "note", label: "面试笔记" },
-    { value: "other", label: "其他" },
-  ],
-  consultant_review: [
-    { value: "note", label: "顾问评估报告" },
-    { value: "transcript", label: "沟通记录" },
-    { value: "other", label: "其他" },
-  ],
-  final_interview: [
-    { value: "recording", label: "面试录音" },
-    { value: "transcript", label: "转录文本" },
-    { value: "note", label: "面试笔记" },
-    { value: "other", label: "其他" },
-  ],
-  offer: [
-    { value: "offer_letter", label: "Offer Letter" },
-    { value: "contract", label: "合同" },
-    { value: "note", label: "备注" },
-    { value: "other", label: "其他" },
-  ],
-};
+// Unified attachment types for all stages
+const ATTACHMENT_TYPES = [
+  { value: "resume", label: "简历" },
+  { value: "recording", label: "录音" },
+  { value: "transcript", label: "转录/记录" },
+  { value: "homework", label: "作业" },
+  { value: "note", label: "笔记/备注" },
+  { value: "contract", label: "合同/Offer" },
+  { value: "other", label: "其他" },
+];
 
 export default async function StagePage({
   params,
@@ -301,7 +270,7 @@ export default async function StagePage({
           candidateId={id}
           stage={stage}
           initialAttachments={stageAttachments}
-          attachmentTypes={STAGE_ATTACHMENT_TYPES[stage] || STAGE_ATTACHMENT_TYPES.resume_review}
+          attachmentTypes={ATTACHMENT_TYPES}
         />
       </Section>
 

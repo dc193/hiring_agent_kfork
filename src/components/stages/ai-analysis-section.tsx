@@ -77,6 +77,24 @@ export function AIAnalysisSection({
     return grouped;
   }, [allAttachments]);
 
+  // Get all unique stage keys from attachments, and map to display names
+  const stageGroups = useMemo(() => {
+    const groups: { key: string; displayName: string; isCurrent: boolean }[] = [];
+    const stageKeys = Object.keys(attachmentsByStage);
+
+    for (const key of stageKeys) {
+      // Try to find a matching stage in stagesList for display name
+      const matchingStage = stagesList.find(s => s.name === key || s.displayName === key);
+      groups.push({
+        key,
+        displayName: matchingStage?.displayName || key,
+        isCurrent: key === stage || matchingStage?.name === stage,
+      });
+    }
+
+    return groups;
+  }, [attachmentsByStage, stagesList, stage]);
+
   const isPromptCompleted = (prompt: StagePrompt) => {
     return executedPromptNames.has(prompt.name) || newlyCompletedPrompts.has(prompt.id);
   };
@@ -255,27 +273,27 @@ export function AIAnalysisSection({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {stagesList.map((stageInfo) => {
-                    const stageFiles = attachmentsByStage[stageInfo.name] || [];
+                  {stageGroups.map((group) => {
+                    const stageFiles = attachmentsByStage[group.key] || [];
                     if (stageFiles.length === 0) return null;
 
                     const allSelected = stageFiles.every(f => selectedFileIds.has(f.id));
 
                     return (
-                      <div key={stageInfo.name} className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                      <div key={group.key} className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
                         <div
                           className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800 cursor-pointer"
-                          onClick={() => selectAllInStage(stageInfo.name)}
+                          onClick={() => selectAllInStage(group.key)}
                         >
                           <div className="flex items-center gap-2">
                             <Folder className="w-4 h-4 text-zinc-400" />
                             <span className="font-medium text-sm">
-                              {stageInfo.displayName}
+                              {group.displayName}
                             </span>
                             <Badge variant="secondary" className="text-xs">
                               {stageFiles.length}
                             </Badge>
-                            {stageInfo.name === stage && (
+                            {group.isCurrent && (
                               <Badge variant="default" className="text-xs bg-blue-500">
                                 当前
                               </Badge>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { FileText, File, Music, Video, Image, Download, Eye, Bot, AlertTriangle, Link2, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FileText, File, Music, Video, Image, Download, Eye, Bot, AlertTriangle, Link2, X, ExternalLink, Loader2 } from "lucide-react";
 import { Button, Badge } from "@/components/ui";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 
 interface Attachment {
   id: string;
@@ -203,9 +204,102 @@ function RelinkModal({
   );
 }
 
+// Text/Markdown Preview Modal
+function TextPreviewModal({
+  attachment,
+  onClose,
+}: {
+  attachment: Attachment;
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const isMarkdown = attachment.fileName.endsWith(".md") || attachment.mimeType === "text/markdown";
+
+  useEffect(() => {
+    async function fetchContent() {
+      try {
+        const response = await fetch(attachment.blobUrl);
+        if (!response.ok) throw new Error("Failed to fetch file");
+        const text = await response.text();
+        setContent(text);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load file");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchContent();
+  }, [attachment.blobUrl]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-500" />
+            <h2 className="text-lg font-semibold truncate">{attachment.fileName}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" asChild>
+              <a href={attachment.blobUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 text-red-500">{error}</div>
+          ) : isMarkdown ? (
+            <div className="prose prose-zinc dark:prose-invert max-w-none">
+              <ReactMarkdown>{content || ""}</ReactMarkdown>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap text-sm font-mono text-zinc-700 dark:text-zinc-300">
+              {content}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper to determine preview type
+function getPreviewType(attachment: Attachment): "pdf" | "text" | "image" | null {
+  const { mimeType, fileName } = attachment;
+
+  if (mimeType?.includes("pdf")) return "pdf";
+  if (mimeType?.startsWith("image/")) return "image";
+  if (
+    mimeType?.startsWith("text/") ||
+    mimeType === "application/json" ||
+    fileName.endsWith(".md") ||
+    fileName.endsWith(".txt") ||
+    fileName.endsWith(".json") ||
+    fileName.endsWith(".csv")
+  ) return "text";
+
+  return null;
+}
+
 export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: AttachmentsTimelineProps) {
   const router = useRouter();
   const [relinkingAttachment, setRelinkingAttachment] = useState<Attachment | null>(null);
+  const [previewingAttachment, setPreviewingAttachment] = useState<Attachment | null>(null);
   const [isRelinking, setIsRelinking] = useState(false);
 
   if (attachments.length === 0) {
@@ -324,20 +418,38 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                         </div>
                       </div>
                       <div className="flex items-center gap-0.5 flex-shrink-0">
-                        {(attachment.mimeType?.includes("pdf") ||
-                          attachment.mimeType?.startsWith("text/") ||
-                          attachment.mimeType?.startsWith("image/")) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            asChild
-                          >
-                            <a href={attachment.blobUrl} target="_blank" rel="noopener noreferrer">
-                              <Eye className="w-3.5 h-3.5" />
-                            </a>
-                          </Button>
-                        )}
+                        {(() => {
+                          const previewType = getPreviewType(attachment);
+                          if (!previewType) return null;
+
+                          if (previewType === "text") {
+                            // Text/Markdown: inline preview modal
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                onClick={() => setPreviewingAttachment(attachment)}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                            );
+                          } else {
+                            // PDF/Image: open in new tab
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                asChild
+                              >
+                                <a href={attachment.blobUrl} target="_blank" rel="noopener noreferrer">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </a>
+                              </Button>
+                            );
+                          }
+                        })()}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -365,6 +477,14 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
           stagesWithPrompts={stagesWithPrompts}
           onClose={() => setRelinkingAttachment(null)}
           onRelink={handleRelink}
+        />
+      )}
+
+      {/* Text Preview Modal */}
+      {previewingAttachment && (
+        <TextPreviewModal
+          attachment={previewingAttachment}
+          onClose={() => setPreviewingAttachment(null)}
         />
       )}
     </>

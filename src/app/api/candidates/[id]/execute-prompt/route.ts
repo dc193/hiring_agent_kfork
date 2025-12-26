@@ -265,19 +265,17 @@ export async function POST(
     }
 
     // Build content blocks array for native document support
+    // Order: Reference files → Candidate materials → Instructions (RAG pattern: context first, instructions last)
     const contentBlocks: ContentBlock[] = [];
 
-    // 1. Add instructions as text block
-    contentBlocks.push({ type: "text", text: prompt.instructions });
-
-    // 2. Get and add reference files as native content blocks
+    // 1. Get and add reference files as native content blocks (knowledge base)
     const referenceFiles = await db
       .select()
       .from(promptReferenceFiles)
       .where(eq(promptReferenceFiles.promptId, promptId));
 
     if (referenceFiles.length > 0) {
-      contentBlocks.push({ type: "text", text: "\n\n---\n\n## 参考资料\n" });
+      contentBlocks.push({ type: "text", text: "# 参考资料（知识库）\n\n以下是你需要参考的模板和标准文档：\n" });
 
       for (const refFile of referenceFiles) {
         const mimeType = refFile.mimeType;
@@ -298,8 +296,8 @@ export async function POST(
       }
     }
 
-    // 3. Add candidate materials as native content blocks
-    contentBlocks.push({ type: "text", text: `\n\n---\n\n## 候选人材料 - ${candidate.name}\n` });
+    // 2. Add candidate materials as native content blocks
+    contentBlocks.push({ type: "text", text: `\n\n---\n\n# 候选人材料 - ${candidate.name}\n\n以下是需要分析的候选人资料：\n` });
 
     if (selectedAttachmentIds && selectedAttachmentIds.length > 0) {
       const candidateBlocks = await buildContentBlocksFromSelectedAttachments(candidateId, selectedAttachmentIds);
@@ -307,6 +305,9 @@ export async function POST(
     } else {
       contentBlocks.push({ type: "text", text: "[没有选择候选人材料]" });
     }
+
+    // 3. Add instructions LAST (so the model has clear direction after seeing all context)
+    contentBlocks.push({ type: "text", text: `\n\n---\n\n# 任务指令\n\n请根据上述参考资料和候选人材料，完成以下任务：\n\n${prompt.instructions}\n\n请确保完成指令中要求的所有任务，包括生成候选人画像和面试问题。` });
 
     // Call Claude API with streaming (required for long-running operations with high token limits)
     // Using stream to handle operations that may take longer than 10 minutes

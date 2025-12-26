@@ -313,10 +313,6 @@ export async function POST(
     const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 32000,
-      thinking: {
-        type: "enabled",
-        budget_tokens: 8000,
-      },
       ...(stageSystemPrompt && { system: stageSystemPrompt }),
       messages: [
         {
@@ -329,7 +325,7 @@ export async function POST(
     // Wait for the complete response
     const message = await stream.finalMessage();
 
-    // Extract text content (skip thinking blocks from extended thinking)
+    // Extract text content
     const textBlock = message.content.find((block) => block.type === "text");
     const analysisResult = textBlock && textBlock.type === "text" ? textBlock.text : "";
 

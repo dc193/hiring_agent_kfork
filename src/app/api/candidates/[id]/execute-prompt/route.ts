@@ -320,15 +320,31 @@ export async function POST(
       contentBlocks.push({ type: "text", text: "[没有选择候选人材料]" });
     }
 
-    // 3. Add instructions LAST (so the model has clear direction after seeing all context)
-    contentBlocks.push({ type: "text", text: `\n\n---\n\n# 任务指令\n\n请根据上述参考资料和候选人材料，完成以下任务：\n\n${prompt.instructions}\n\n请确保完成指令中要求的所有任务，包括生成候选人画像和面试问题。` });
+    // 3. Add a simple prompt at the end of user message
+    contentBlocks.push({ type: "text", text: `\n\n---\n\n请根据上述参考资料和候选人材料，按照系统指令完成所有任务。` });
+
+    // Build system prompt: combine stage system prompt + main instructions (like Claude Projects)
+    // This gives instructions higher priority than putting them in user message
+    const systemPromptParts: string[] = [];
+
+    // Add stage-level system prompt if exists (shared settings across prompts)
+    if (stageSystemPrompt) {
+      systemPromptParts.push(stageSystemPrompt);
+    }
+
+    // Add main instructions (this is the key change - instructions go in system prompt)
+    systemPromptParts.push(`# 任务指令\n\n${prompt.instructions}\n\n请确保完成指令中要求的所有任务，包括生成候选人画像和面试问题。不要遗漏任何部分。`);
+
+    const fullSystemPrompt = systemPromptParts.join("\n\n---\n\n");
+
+    console.log(`[DEBUG] System prompt length: ${fullSystemPrompt.length} chars`);
 
     // Call Claude API with streaming (required for long-running operations with high token limits)
     // Using stream to handle operations that may take longer than 10 minutes
     const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 32000,
-      ...(stageSystemPrompt && { system: stageSystemPrompt }),
+      system: fullSystemPrompt,
       messages: [
         {
           role: "user",

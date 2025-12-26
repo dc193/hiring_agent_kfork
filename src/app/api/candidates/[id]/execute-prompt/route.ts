@@ -290,7 +290,7 @@ export async function POST(
         if (isTextFile(mimeType, fileName)) {
           const blocks = await createTextBlock(refFile.blobUrl, fileName);
           // 🔍 DEBUG: Log loaded content length
-          const textContent = blocks.find(b => b.type === "text" && b.text.includes(fileName));
+          const textContent = blocks.find(b => b.type === "text" && (b as TextBlock).text.includes(fileName)) as TextBlock | undefined;
           console.log(`[DEBUG] Loaded text file ${fileName}: ${textContent ? textContent.text.length : 0} chars`);
           contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
@@ -372,7 +372,7 @@ export async function POST(
     }
 
     // Extract ALL text content (in case there are multiple text blocks)
-    const textBlocks = message.content.filter((block): block is { type: "text"; text: string } => block.type === "text");
+    const textBlocks = message.content.filter(block => block.type === "text") as Array<{ type: "text"; text: string }>;
     const analysisResult = textBlocks.map(b => b.text).join("\n\n");
 
     console.log(`[DEBUG] Final result length: ${analysisResult.length} chars`);

@@ -311,13 +311,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
 
         await db.insert(attachments).values({
           candidateId,
-          pipelineStage: initialStage,
+          pipelineStage: null, // 简历原文不归属任何阶段
           type: "resume",
           fileName: file.name,
           fileSize: file.size,
           mimeType: fileType,
           blobUrl: blob.url,
           description: "简历原文",
+          tags: ["简历原文"],
           uploadedBy: null,
         });
         console.log("Saved resume as attachment:", blob.url);

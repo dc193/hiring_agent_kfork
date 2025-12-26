@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, pipelineTemplates, templateStages, stagePrompts, promptReferenceFiles } from "@/db";
+import { db, pipelineTemplates, templateStages, stagePrompts, promptReferenceFiles, candidates } from "@/db";
 import { eq, asc, inArray } from "drizzle-orm";
 import { del } from "@vercel/blob";
 
@@ -278,6 +278,12 @@ export async function DELETE(
       // Delete reference files with blobs
       await deletePromptReferenceFilesWithBlobs(promptIds);
     }
+
+    // Clear templateId from candidates referencing this template
+    await db
+      .update(candidates)
+      .set({ templateId: null })
+      .where(eq(candidates.templateId, id));
 
     // Delete template (cascades to stages and prompts)
     const [template] = await db

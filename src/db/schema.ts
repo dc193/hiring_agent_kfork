@@ -110,7 +110,7 @@ export const promptReferenceFiles = pgTable("prompt_reference_files", {
 // ============================================
 export const candidates = pgTable("candidates", {
   id: uuid("id").primaryKey().defaultRandom(),
-  templateId: uuid("template_id").references(() => pipelineTemplates.id),
+  templateId: uuid("template_id").references(() => pipelineTemplates.id, { onDelete: "set null" }),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),

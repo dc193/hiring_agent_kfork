@@ -340,7 +340,7 @@ export async function POST(
     const uploadedBlob = await put(
       `candidates/${candidateId}/${stage}/${fileName}`,
       blob,
-      { access: "public" }
+      { access: "public", addRandomSuffix: true }
     );
 
     // Save attachment record with stageId for broken link detection

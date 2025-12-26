@@ -16,7 +16,6 @@ interface StageWithPrompts {
     id?: string;
     name: string;
     instructions: string;
-    referenceContent?: string | null;
     orderIndex?: number;
   }[];
 }
@@ -108,9 +107,9 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
   };
 
   const handlePromptSave = (prompt: {
+    id?: string;
     name: string;
     instructions: string;
-    referenceContent?: string;
   }) => {
     if (!editingPrompt) return;
 
@@ -176,9 +175,9 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
 
     const promptForEditor = existingPrompt
       ? {
+          id: existingPrompt.id,
           name: existingPrompt.name,
           instructions: existingPrompt.instructions,
-          referenceContent: existingPrompt.referenceContent || "",
         }
       : undefined;
 
@@ -369,11 +368,6 @@ export function TemplateEditor({ template, onSave, onCancel }: TemplateEditorPro
                                 <span className="font-medium text-zinc-700 dark:text-zinc-300">
                                   {prompt.name}
                                 </span>
-                                {prompt.referenceContent && (
-                                  <span className="text-xs text-zinc-400 ml-2">
-                                    (有参考资料)
-                                  </span>
-                                )}
                               </div>
                               <Button
                                 variant="ghost"

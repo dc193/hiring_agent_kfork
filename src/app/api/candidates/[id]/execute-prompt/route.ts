@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { db, candidates, candidateProfiles, candidatePreferences, attachments, interviewNotes, stagePrompts, templateStages } from "@/db";
+import { db, candidates, candidateProfiles, candidatePreferences, attachments, interviewNotes, stagePrompts, templateStages, promptReferenceFiles } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import { ContextSource } from "@/db/schema";
@@ -289,18 +289,52 @@ export async function POST(
       candidateContext = "[没有选择候选人材料]";
     }
 
+    // Get reference files for this prompt
+    const referenceFiles = await db
+      .select()
+      .from(promptReferenceFiles)
+      .where(eq(promptReferenceFiles.promptId, promptId));
+
+    // Build reference content from files
+    let referenceContentText = "";
+    if (referenceFiles.length > 0) {
+      const refContentParts: string[] = [];
+      for (const refFile of referenceFiles) {
+        const isTextFile =
+          refFile.mimeType?.startsWith("text/") ||
+          refFile.mimeType === "application/json" ||
+          refFile.fileName.endsWith(".md") ||
+          refFile.fileName.endsWith(".txt") ||
+          refFile.fileName.endsWith(".json") ||
+          refFile.fileName.endsWith(".csv");
+
+        if (isTextFile) {
+          try {
+            const response = await fetch(refFile.blobUrl);
+            const content = await response.text();
+            refContentParts.push(`### ${refFile.fileName}\n\n${content}`);
+          } catch {
+            refContentParts.push(`### ${refFile.fileName}\n\n[无法加载文件内容]`);
+          }
+        } else {
+          refContentParts.push(`### ${refFile.fileName}\n\n[非文本文件，无法读取内容]`);
+        }
+      }
+      referenceContentText = refContentParts.join("\n\n");
+    }
+
     // Build full prompt with reference content and candidate materials
     let fullPrompt = prompt.instructions;
 
-    // Add reference content (template-level) if exists
-    if (prompt.referenceContent) {
+    // Add reference files content (template-level) if exists
+    if (referenceContentText) {
       fullPrompt += `
 
 ---
 
 ## 参考资料
 
-${prompt.referenceContent}`;
+${referenceContentText}`;
     }
 
     // Add candidate materials

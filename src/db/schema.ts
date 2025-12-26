@@ -84,10 +84,25 @@ export const stagePrompts = pgTable("stage_prompts", {
   name: varchar("name", { length: 255 }).notNull(),
   instructions: text("instructions").notNull(),
   contextSources: jsonb("context_sources").$type<ContextSource[]>().default([]), // 保留字段但不再使用
-  referenceContent: text("reference_content"), // 模板级别的参考资料内容
+  referenceContent: text("reference_content"), // 保留字段但不再使用，改用 promptReferenceFiles
   orderIndex: integer("order_index").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table: prompt_reference_files (Prompt参考文件)
+// 模板级别的参考资料文件
+// ============================================
+export const promptReferenceFiles = pgTable("prompt_reference_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  promptId: uuid("prompt_id").notNull().references(() => stagePrompts.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  blobUrl: varchar("blob_url", { length: 1000 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // ============================================
@@ -794,3 +809,5 @@ export type TemplateStage = typeof templateStages.$inferSelect;
 export type NewTemplateStage = typeof templateStages.$inferInsert;
 export type StagePrompt = typeof stagePrompts.$inferSelect;
 export type NewStagePrompt = typeof stagePrompts.$inferInsert;
+export type PromptReferenceFile = typeof promptReferenceFiles.$inferSelect;
+export type NewPromptReferenceFile = typeof promptReferenceFiles.$inferInsert;

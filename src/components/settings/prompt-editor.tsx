@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui";
-import { Save, X, FileText } from "lucide-react";
+import { Save, X, FileText, Upload, Trash2, Loader2, File } from "lucide-react";
+
+interface ReferenceFile {
+  id: string;
+  fileName: string;
+  fileSize: number | null;
+  mimeType: string | null;
+  blobUrl: string;
+}
 
 interface PromptData {
+  id?: string;
   name: string;
   instructions: string;
   referenceContent?: string;
@@ -16,10 +25,94 @@ interface PromptEditorProps {
   onCancel: () => void;
 }
 
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
   const [name, setName] = useState(prompt?.name || "");
   const [instructions, setInstructions] = useState(prompt?.instructions || "");
-  const [referenceContent, setReferenceContent] = useState(prompt?.referenceContent || "");
+  const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const promptId = prompt?.id;
+
+  // Fetch existing reference files when editing a prompt
+  const fetchReferenceFiles = useCallback(async () => {
+    if (!promptId) return;
+
+    setIsLoadingFiles(true);
+    try {
+      const response = await fetch(`/api/prompts/${promptId}/reference-files`);
+      const result = await response.json();
+      if (result.success) {
+        setReferenceFiles(result.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch reference files:", error);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  }, [promptId]);
+
+  useEffect(() => {
+    fetchReferenceFiles();
+  }, [fetchReferenceFiles]);
+
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !promptId) return;
+
+    setIsUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch(`/api/prompts/${promptId}/reference-files`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          setReferenceFiles((prev) => [...prev, result.data]);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to upload file:", error);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!promptId) return;
+
+    setDeletingFileId(fileId);
+    try {
+      const response = await fetch(`/api/prompts/${promptId}/reference-files/${fileId}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setReferenceFiles((prev) => prev.filter((f) => f.id !== fileId));
+      }
+    } catch (error) {
+      console.error("Failed to delete file:", error);
+    } finally {
+      setDeletingFileId(null);
+    }
+  };
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -31,7 +124,7 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
       return;
     }
 
-    onSave({ name, instructions, referenceContent: referenceContent.trim() || undefined });
+    onSave({ id: promptId, name, instructions });
   };
 
   return (
@@ -92,36 +185,105 @@ export function PromptEditor({ prompt, onSave, onCancel }: PromptEditorProps) {
         />
       </div>
 
-      {/* Reference Content (Template-level reference materials) */}
+      {/* Reference Files */}
       <div>
         <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
           <FileText className="w-4 h-4 inline mr-1" />
-          参考资料（可选）
+          参考资料文件
         </label>
         <p className="text-xs text-zinc-500 mb-3">
-          在这里粘贴模板级别的参考资料内容（如评分标准、问题库、规范文档等）。这些内容会在执行 AI 分析时作为固定参考传递给 AI，适用于所有候选人。
+          上传模板级别的参考资料文件（如评分标准.md、问题库.txt等）。这些文件会在执行 AI 分析时作为固定参考传递给 AI，适用于所有候选人。
         </p>
-        <textarea
-          value={referenceContent}
-          onChange={(e) => setReferenceContent(e.target.value)}
-          placeholder={`例如：
 
-=== 评分标准 ===
-- 5分：优秀，超出预期
-- 4分：良好，符合预期
-- 3分：一般，基本达标
-- 2分：欠佳，需要提升
-- 1分：不合格
+        {!promptId ? (
+          <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-6 text-center text-zinc-500">
+            <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">请先保存 Prompt，然后再上传参考资料文件</p>
+          </div>
+        ) : (
+          <>
+            {/* Upload area */}
+            <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg p-4 text-center mb-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={(e) => handleFileUpload(e.target.files)}
+                className="hidden"
+                accept=".md,.txt,.json,.csv,.pdf"
+              />
+              <Upload className="w-6 h-6 mx-auto mb-2 text-zinc-400" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    上传中...
+                  </>
+                ) : (
+                  "选择文件"
+                )}
+              </Button>
+              <p className="text-xs text-zinc-500 mt-2">
+                支持 .md, .txt, .json, .csv, .pdf 格式
+              </p>
+            </div>
 
-=== 面试问题标准 ===
-1. 技术问题应该涵盖...
-2. 行为问题应该探索...`}
-          rows={10}
-          className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-        />
-        <p className="text-xs text-zinc-400 mt-1">
-          提示：可以直接复制粘贴 .md 或 .txt 文件的内容
-        </p>
+            {/* File list */}
+            {isLoadingFiles ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+              </div>
+            ) : referenceFiles.length === 0 ? (
+              <div className="text-center py-4 text-zinc-400 text-sm">
+                暂无参考资料文件
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {referenceFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <File className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <a
+                          href={file.blobUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700 truncate block"
+                        >
+                          {file.fileName}
+                        </a>
+                        <p className="text-xs text-zinc-500">
+                          {formatFileSize(file.fileSize)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteFile(file.id)}
+                      disabled={deletingFileId === file.id}
+                      className="text-red-500 hover:text-red-600"
+                    >
+                      {deletingFileId === file.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Info about execution-time file selection */}

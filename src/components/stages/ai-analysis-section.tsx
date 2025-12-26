@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Card, CardContent, Badge } from "@/components/ui";
 import { Play, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import type { StagePrompt, ContextSource } from "@/db";
+import type { StagePrompt, ContextSource } from "@/db/schema";
 
 interface AIAnalysisSectionProps {
   candidateId: string;

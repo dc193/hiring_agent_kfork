@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui";
 import { Save, X } from "lucide-react";
-import { CONTEXT_SOURCES, type ContextSource } from "@/db";
+import { CONTEXT_SOURCES, type ContextSource } from "@/db/schema";
 
 interface PromptData {
   name: string;

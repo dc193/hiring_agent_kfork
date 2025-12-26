@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button, Card, CardContent, Badge } from "@/components/ui";
 import { Plus, Edit2, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { TemplateEditor } from "./template-editor";
-import type { PipelineTemplate, TemplateStage, StagePrompt, ContextSource } from "@/db";
+import type { PipelineTemplate, TemplateStage, StagePrompt, ContextSource } from "@/db/schema";
 
 interface StageWithPrompts {
   id?: string;

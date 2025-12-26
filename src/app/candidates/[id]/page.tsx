@@ -111,7 +111,7 @@ export default async function CandidateDetailPage({
                   {candidate.status === "archived" && (
                     <Badge variant="secondary">Archived</Badge>
                   )}
-                  <CandidateActions candidateId={candidate.id} currentStatus={candidate.status} />
+                  <CandidateActions candidateId={candidate.id} currentStatus={candidate.status} candidateName={candidate.name} />
                 </div>
               </div>
 

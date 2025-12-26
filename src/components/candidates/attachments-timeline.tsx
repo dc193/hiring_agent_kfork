@@ -88,30 +88,38 @@ function getTypeBadge(type: string) {
 function checkBrokenLinks(
   attachment: Attachment,
   stagesWithPrompts: StageWithPrompts[]
-): { stageBroken: boolean; promptBroken: boolean } {
-  // Only check AI analysis type attachments
-  if (attachment.type !== "ai_analysis") {
-    return { stageBroken: false, promptBroken: false };
-  }
-
+): { stageBroken: boolean; promptBroken: boolean; stageNameMismatch: boolean } {
   let stageBroken = false;
   let promptBroken = false;
+  let stageNameMismatch = false;
 
-  // Check stage link
-  if (attachment.stageId) {
-    const stageExists = stagesWithPrompts.some(s => s.id === attachment.stageId);
-    stageBroken = !stageExists;
-  }
-
-  // Check prompt link
-  if (attachment.sourcePromptId) {
-    const promptExists = stagesWithPrompts.some(s =>
-      s.prompts.some(p => p.id === attachment.sourcePromptId)
+  // Check if pipelineStage (snapshot) matches any current stage name or displayName
+  // This applies to ALL attachments
+  if (attachment.pipelineStage && stagesWithPrompts.length > 0) {
+    const stageMatches = stagesWithPrompts.some(
+      s => s.displayName === attachment.pipelineStage
     );
-    promptBroken = !promptExists;
+    stageNameMismatch = !stageMatches;
   }
 
-  return { stageBroken, promptBroken };
+  // For AI analysis attachments, also check stageId and sourcePromptId references
+  if (attachment.type === "ai_analysis") {
+    // Check stage link by ID
+    if (attachment.stageId) {
+      const stageExists = stagesWithPrompts.some(s => s.id === attachment.stageId);
+      stageBroken = !stageExists;
+    }
+
+    // Check prompt link
+    if (attachment.sourcePromptId) {
+      const promptExists = stagesWithPrompts.some(s =>
+        s.prompts.some(p => p.id === attachment.sourcePromptId)
+      );
+      promptBroken = !promptExists;
+    }
+  }
+
+  return { stageBroken, promptBroken, stageNameMismatch };
 }
 
 // Relink Modal Component
@@ -350,14 +358,15 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
             <div className="text-xs font-medium text-zinc-500 mb-2">{date}</div>
             <div className="space-y-2">
               {dayAttachments.map((attachment) => {
-                const { stageBroken, promptBroken } = checkBrokenLinks(attachment, stagesWithPrompts);
+                const { stageBroken, promptBroken, stageNameMismatch } = checkBrokenLinks(attachment, stagesWithPrompts);
                 const hasBrokenLink = stageBroken || promptBroken;
+                const hasWarning = hasBrokenLink || stageNameMismatch;
 
                 return (
                   <div
                     key={attachment.id}
                     className={`p-2 rounded-lg border transition-colors ${
-                      hasBrokenLink
+                      hasWarning
                         ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
                         : "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
                     }`}
@@ -377,35 +386,37 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                         {/* Stage display with broken link indicator */}
                         {attachment.pipelineStage && (
                           <div className="flex items-center gap-1 mt-1">
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant="outline" className={`text-xs ${stageNameMismatch ? "border-amber-400 text-amber-600" : ""}`}>
                               {attachment.pipelineStage}
                             </Badge>
-                            {stageBroken && (
-                              <span className="text-amber-500" title="阶段已被删除或修改">
+                            {(stageBroken || stageNameMismatch) && (
+                              <span className="text-amber-500" title={stageNameMismatch ? "阶段名称已修改" : "阶段已被删除"}>
                                 <AlertTriangle className="w-3 h-3" />
                               </span>
                             )}
                           </div>
                         )}
 
-                        {/* Broken link warning */}
-                        {hasBrokenLink && (
+                        {/* Warning messages */}
+                        {(hasBrokenLink || stageNameMismatch) && (
                           <div className="flex items-center gap-1 mt-1.5">
                             <AlertTriangle className="w-3 h-3 text-amber-500" />
                             <span className="text-xs text-amber-600 dark:text-amber-400">
-                              {promptBroken ? "Prompt 已失效" : "阶段已失效"}
+                              {promptBroken ? "Prompt 已失效" : stageBroken ? "阶段已删除" : "阶段名称已修改"}
                             </span>
-                            <button
-                              onClick={() => setRelinkingAttachment(attachment)}
-                              className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
-                            >
-                              <Link2 className="w-3 h-3" />
-                              重新关联
-                            </button>
+                            {hasBrokenLink && attachment.type === "ai_analysis" && (
+                              <button
+                                onClick={() => setRelinkingAttachment(attachment)}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-0.5 ml-1"
+                              >
+                                <Link2 className="w-3 h-3" />
+                                重新关联
+                              </button>
+                            )}
                           </div>
                         )}
 
-                        {attachment.description && !hasBrokenLink && (
+                        {attachment.description && !hasWarning && (
                           <p className="text-xs text-zinc-500 mt-1 truncate" title={attachment.description}>
                             {attachment.description}
                           </p>

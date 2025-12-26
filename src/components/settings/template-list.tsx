@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Card, CardContent, Badge } from "@/components/ui";
-import { Plus, Edit2, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Edit2, Trash2, ChevronDown, ChevronRight, AlertTriangle, X } from "lucide-react";
 import { TemplateEditor } from "./template-editor";
 import type { PipelineTemplate, TemplateStage, StagePrompt, ContextSource } from "@/db/schema";
 
@@ -45,6 +45,8 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
   const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
   const [editingTemplate, setEditingTemplate] = useState<TemplateWithDetails | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState<TemplateWithDetails | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const toggleExpand = (id: string) => {
     const newExpanded = new Set(expandedTemplates);
@@ -56,16 +58,20 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
     setExpandedTemplates(newExpanded);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("确定要删除这个模板吗？")) return;
+  const handleDelete = async () => {
+    if (!deletingTemplate) return;
 
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/templates/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/templates/${deletingTemplate.id}`, { method: "DELETE" });
       if (res.ok) {
-        setTemplates(templates.filter((t) => t.id !== id));
+        setTemplates(templates.filter((t) => t.id !== deletingTemplate.id));
+        setDeletingTemplate(null);
       }
     } catch (error) {
       console.error("Delete failed:", error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -163,7 +169,7 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleDelete(template.id)}
+                      onClick={() => setDeletingTemplate(template)}
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />
                     </Button>
@@ -226,6 +232,54 @@ export function TemplateList({ initialTemplates }: TemplateListProps) {
             新建模板
           </Button>
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingTemplate && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="w-5 h-5" />
+                <h2 className="text-lg font-semibold">确认删除</h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setDeletingTemplate(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-zinc-600 dark:text-zinc-400">
+                确定要删除模板 <span className="font-semibold text-zinc-900 dark:text-zinc-100">{deletingTemplate.name}</span> 吗？
+              </p>
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  <strong>注意：</strong>删除模板后，使用此模板的候选人将失去模板关联，附件的阶段信息将显示警告。
+                </p>
+              </div>
+              <p className="text-sm text-zinc-500">
+                此模板包含 {deletingTemplate.stages.length} 个阶段
+                {deletingTemplate.stages.reduce((sum, s) => sum + s.prompts.length, 0) > 0 && (
+                  <> 和 {deletingTemplate.stages.reduce((sum, s) => sum + s.prompts.length, 0)} 个 Prompt</>
+                )}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="outline" onClick={() => setDeletingTemplate(null)} disabled={isDeleting}>
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isDeleting ? "删除中..." : "确认删除"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

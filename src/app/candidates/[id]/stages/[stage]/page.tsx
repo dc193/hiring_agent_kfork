@@ -91,7 +91,9 @@ export default async function StagePage({
 }: {
   params: Promise<{ id: string; stage: string }>;
 }) {
-  const { id, stage } = await params;
+  const { id, stage: encodedStage } = await params;
+  // Decode URL-encoded stage name (e.g., %E7%AE%80%E5%8E%86 -> 简历)
+  const stage = decodeURIComponent(encodedStage);
 
   // First get the candidate to check their template
   const [candidate] = await db

@@ -308,10 +308,9 @@ export async function POST(
       contentBlocks.push({ type: "text", text: "[没有选择候选人材料]" });
     }
 
-    // Call Claude API with native content blocks and extended thinking
-    // max_tokens needs to be high enough to accommodate both thinking and response
-    // For complex tasks like generating interview questions, we need substantial output space
-    const message = await anthropic.messages.create({
+    // Call Claude API with streaming (required for long-running operations with high token limits)
+    // Using stream to handle operations that may take longer than 10 minutes
+    const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 32000,
       thinking: {
@@ -326,6 +325,9 @@ export async function POST(
         },
       ],
     });
+
+    // Wait for the complete response
+    const message = await stream.finalMessage();
 
     // Extract text content (skip thinking blocks from extended thinking)
     const textBlock = message.content.find((block) => block.type === "text");

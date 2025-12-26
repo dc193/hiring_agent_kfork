@@ -1,7 +1,81 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, pipelineTemplates, templateStages, stagePrompts, promptReferenceFiles } from "@/db";
-import { eq, asc, inArray } from "drizzle-orm";
+import { db, pipelineTemplates, templateStages, stagePrompts, promptReferenceFiles, candidates, attachments, interviewNotes, pipelineHistory } from "@/db";
+import { eq, asc, inArray, and } from "drizzle-orm";
 import { del } from "@vercel/blob";
+
+// Helper function to update candidate data when stage name changes
+async function handleStageRename(
+  templateId: string,
+  oldStageName: string,
+  newStageName: string
+) {
+  if (oldStageName === newStageName) return;
+
+  // Find all candidates using this template
+  const templateCandidates = await db
+    .select({ id: candidates.id })
+    .from(candidates)
+    .where(eq(candidates.templateId, templateId));
+
+  const candidateIds = templateCandidates.map(c => c.id);
+  if (candidateIds.length === 0) return;
+
+  // Update candidates' current pipeline stage
+  await db
+    .update(candidates)
+    .set({ pipelineStage: newStageName })
+    .where(
+      and(
+        inArray(candidates.id, candidateIds),
+        eq(candidates.pipelineStage, oldStageName)
+      )
+    );
+
+  // Update attachments' pipeline stage
+  await db
+    .update(attachments)
+    .set({ pipelineStage: newStageName })
+    .where(
+      and(
+        inArray(attachments.candidateId, candidateIds),
+        eq(attachments.pipelineStage, oldStageName)
+      )
+    );
+
+  // Update interview notes' stage
+  await db
+    .update(interviewNotes)
+    .set({ stage: newStageName })
+    .where(
+      and(
+        inArray(interviewNotes.candidateId, candidateIds),
+        eq(interviewNotes.stage, oldStageName)
+      )
+    );
+
+  // Update pipeline history
+  await db
+    .update(pipelineHistory)
+    .set({ fromStage: newStageName })
+    .where(
+      and(
+        inArray(pipelineHistory.candidateId, candidateIds),
+        eq(pipelineHistory.fromStage, oldStageName)
+      )
+    );
+
+  await db
+    .update(pipelineHistory)
+    .set({ toStage: newStageName })
+    .where(
+      and(
+        inArray(pipelineHistory.candidateId, candidateIds),
+        eq(pipelineHistory.toStage, oldStageName)
+      )
+    );
+
+  console.log(`Renamed stage "${oldStageName}" to "${newStageName}" for ${candidateIds.length} candidates`);
+}
 
 // GET single template with stages and prompts
 export async function GET(
@@ -146,6 +220,16 @@ export async function PUT(
         const stage = stages[i];
 
         if (stage.id && existingStageIds.includes(stage.id)) {
+          // Get old stage name to check if it's being renamed
+          const existingStage = existingStages.find(s => s.id === stage.id);
+          const oldStageName = existingStage?.name;
+          const newStageName = stage.name;
+
+          // Handle stage rename - update all candidate data
+          if (oldStageName && oldStageName !== newStageName) {
+            await handleStageRename(id, oldStageName, newStageName);
+          }
+
           // Update existing stage
           await db
             .update(templateStages)

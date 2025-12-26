@@ -113,11 +113,21 @@ export default async function StagePage({
         .where(eq(templateStages.templateId, candidate.templateId!))
     );
     validStages = templateStagesData.map(s => s.name);
+    console.log("[Stage Page Debug]", {
+      candidateId: id,
+      templateId: candidate.templateId,
+      urlStage: stage,
+      urlStageEncoded: encodeURIComponent(stage),
+      validStages,
+      candidatePipelineStage: candidate.pipelineStage,
+      stageInValid: validStages.includes(stage),
+    });
   } else {
     validStages = [...PIPELINE_STAGES];
   }
 
   if (!validStages.includes(stage)) {
+    console.log("[Stage Page] 404 - stage not found in validStages");
     notFound();
   }
 

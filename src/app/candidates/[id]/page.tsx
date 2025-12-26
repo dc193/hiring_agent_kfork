@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
-import { db, candidates, workExperiences, educations, projects, templateStages } from "@/db";
+import { db, candidates, workExperiences, educations, projects, templateStages, attachments } from "@/db";
 import { eq, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
 import {
+  AttachmentsTimeline,
   CandidateActions,
   ContactInfo,
   InterviewSection,
@@ -49,10 +50,11 @@ export default async function CandidateDetailPage({
     }));
   }
 
-  const [work, education, project] = await Promise.all([
+  const [work, education, project, candidateAttachments] = await Promise.all([
     db.select().from(workExperiences).where(eq(workExperiences.candidateId, id)).orderBy(desc(workExperiences.createdAt)),
     db.select().from(educations).where(eq(educations.candidateId, id)),
     db.select().from(projects).where(eq(projects.candidateId, id)),
+    db.select().from(attachments).where(eq(attachments.candidateId, id)).orderBy(desc(attachments.createdAt)),
   ]);
 
   return (
@@ -144,6 +146,11 @@ export default async function CandidateDetailPage({
           currentStage={candidate.pipelineStage}
         />
       </div>
+
+      {/* Attachments Timeline - 解耦架构：所有附件按时间线显示 */}
+      <Section title="📎 所有附件" className="mb-6">
+        <AttachmentsTimeline attachments={candidateAttachments} />
+      </Section>
 
       {/* Skills */}
       {((candidate.skills as string[]) || []).length > 0 && (

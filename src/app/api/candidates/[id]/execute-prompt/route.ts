@@ -31,13 +31,14 @@ async function buildContextFromSelectedAttachments(
     return "[没有选择的文件]";
   }
 
-  // Group by stage for better organization
+  // Group by stage for better organization (handle null pipelineStage)
   const byStage: Record<string, typeof filteredAttachments> = {};
   for (const att of filteredAttachments) {
-    if (!byStage[att.pipelineStage]) {
-      byStage[att.pipelineStage] = [];
+    const stageKey = att.pipelineStage || "未分类";
+    if (!byStage[stageKey]) {
+      byStage[stageKey] = [];
     }
-    byStage[att.pipelineStage].push(att);
+    byStage[stageKey].push(att);
   }
 
   // Build context for each stage
@@ -372,18 +373,20 @@ ${candidateContext}`;
       { access: "public" }
     );
 
-    // Save attachment record
+    // Save attachment record (解耦架构：记录 sourcePromptId，pipelineStage 仅作参考)
     const [attachment] = await db
       .insert(attachments)
       .values({
         candidateId,
-        pipelineStage: stage,
-        type: "note",
+        pipelineStage: stage, // 可选，仅用于显示分组
+        type: "ai_analysis",
         fileName,
         fileSize: blob.size,
         mimeType: "text/markdown",
         blobUrl: uploadedBlob.url,
         description: `AI 生成 - ${prompt.name}`,
+        tags: ["AI分析", prompt.name],
+        sourcePromptId: promptId,
       })
       .returning();
 

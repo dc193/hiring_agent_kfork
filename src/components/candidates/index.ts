@@ -1,3 +1,4 @@
+export { AttachmentsTimeline } from "./attachments-timeline";
 export { CandidateActions } from "./candidate-actions";
 export { ContactInfo } from "./contact-info";
 export { EducationList } from "./education-list";

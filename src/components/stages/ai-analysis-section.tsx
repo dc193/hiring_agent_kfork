@@ -64,11 +64,11 @@ export function AIAnalysisSection({
     return executed;
   }, [existingAttachments]);
 
-  // Group attachments by stage
+  // Group attachments by stage (handle null pipelineStage)
   const attachmentsByStage = useMemo(() => {
     const grouped: Record<string, Attachment[]> = {};
     for (const attachment of allAttachments) {
-      const stageKey = attachment.pipelineStage;
+      const stageKey = attachment.pipelineStage || "未分类";
       if (!grouped[stageKey]) {
         grouped[stageKey] = [];
       }

@@ -511,10 +511,14 @@ ${referenceContentText}`;
 
 ${candidateContext}`;
 
-    // Call Claude API with optional system prompt
+    // Call Claude API with optional system prompt and extended thinking
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 16000,
+      thinking: {
+        type: "enabled",
+        budget_tokens: 10000,
+      },
       ...(stageSystemPrompt && { system: stageSystemPrompt }),
       messages: [
         {
@@ -524,8 +528,9 @@ ${candidateContext}`;
       ],
     });
 
-    const analysisResult =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    // Extract text content (skip thinking blocks from extended thinking)
+    const textBlock = message.content.find((block) => block.type === "text");
+    const analysisResult = textBlock && textBlock.type === "text" ? textBlock.text : "";
 
     // Save result as attachment
     const fileName = `${prompt.name}_${candidate.name}.md`;

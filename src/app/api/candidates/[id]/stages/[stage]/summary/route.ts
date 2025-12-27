@@ -142,7 +142,7 @@ export async function POST(
     const materialsContent: string[] = [];
 
     for (const attachment of stageAttachments) {
-      const stageLabel = {
+      const stageLabelMap: Record<string, string> = {
         resume_review: "简历筛选",
         phone_screen: "电话面试",
         homework: "作业",
@@ -150,7 +150,9 @@ export async function POST(
         consultant_review: "外部顾问",
         final_interview: "终面",
         offer: "Offer",
-      }[attachment.pipelineStage] || attachment.pipelineStage;
+      };
+      const pipelineStage = attachment.pipelineStage || "unknown";
+      const stageLabel = stageLabelMap[pipelineStage] || pipelineStage;
 
       const content = await readFileContent(
         attachment.blobUrl,
@@ -163,7 +165,7 @@ export async function POST(
       }
     }
 
-    const stageLabel = {
+    const finalStageLabelMap: Record<string, string> = {
       resume_review: "简历筛选",
       phone_screen: "电话面试",
       homework: "作业",
@@ -171,7 +173,8 @@ export async function POST(
       consultant_review: "外部顾问",
       final_interview: "终面",
       offer: "Offer",
-    }[stage] || stage;
+    };
+    const stageLabel = finalStageLabelMap[stage] || stage;
 
     // Prepare the prompt
     const fullPrompt = summaryPrompt

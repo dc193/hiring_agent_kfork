@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { put } from "@vercel/blob";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, attachments } from "@/db";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, attachments, globalSettings, GLOBAL_SETTING_KEYS } from "@/db";
+import { eq } from "drizzle-orm";
 
 const anthropic = new Anthropic();
 

@@ -238,6 +238,15 @@ export default async function StagePage({
             </div>
           </div>
 
+          {/* Generate Summary */}
+          <div className="mt-4">
+            <GenerateSummaryButton
+              candidateId={id}
+              stage={stage}
+              stageLabel={STAGE_LABELS[stage]}
+            />
+          </div>
+
           {/* Stage Navigation */}
           <div className="flex items-center justify-between mt-6 pt-6 border-t border-zinc-100 dark:border-zinc-800">
             {prevStage ? (

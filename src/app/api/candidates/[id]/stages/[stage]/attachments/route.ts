@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, attachments, candidates, PIPELINE_STAGES } from "@/db";
+import { db, attachments, candidates, templateStages, PIPELINE_STAGES } from "@/db";
 import { eq, and, desc } from "drizzle-orm";
 import { put, del } from "@vercel/blob";
 import { createProcessingJobs, processAttachmentJobs } from "@/lib/processing";
+
+// Helper: Validate stage against candidate's template or default stages
+async function validateStage(candidateId: string, stage: string): Promise<{ valid: boolean; candidate?: typeof candidates.$inferSelect }> {
+  const [candidate] = await db
+    .select()
+    .from(candidates)
+    .where(eq(candidates.id, candidateId));
+
+  if (!candidate) {
+    return { valid: false };
+  }
+
+  // If candidate has a template, validate against template stages
+  if (candidate.templateId) {
+    const stages = await db
+      .select()
+      .from(templateStages)
+      .where(eq(templateStages.templateId, candidate.templateId));
+    const validStages = stages.map(s => s.name);
+    return { valid: validStages.includes(stage), candidate };
+  }
+
+  // Fall back to default stages
+  return { valid: PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number]), candidate };
+}
 
 // GET /api/candidates/[id]/stages/[stage]/attachments
 export async function GET(
@@ -10,12 +35,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string; stage: string }> }
 ) {
   try {
-    const { id, stage } = await params;
+    const { id, stage: encodedStage } = await params;
+    const stage = decodeURIComponent(encodedStage);
 
-    // Validate stage
-    if (!PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number])) {
+    // Validate stage against candidate's template
+    const { valid } = await validateStage(id, stage);
+    if (!valid) {
       return NextResponse.json(
-        { success: false, error: "Invalid pipeline stage" },
+        { success: false, error: "Invalid pipeline stage or candidate not found" },
         { status: 400 }
       );
     }
@@ -47,26 +74,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string; stage: string }> }
 ) {
   try {
-    const { id, stage } = await params;
+    const { id, stage: encodedStage } = await params;
+    const stage = decodeURIComponent(encodedStage);
 
-    // Validate stage
-    if (!PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number])) {
+    // Validate stage against candidate's template
+    const { valid, candidate } = await validateStage(id, stage);
+    if (!valid || !candidate) {
       return NextResponse.json(
-        { success: false, error: "Invalid pipeline stage" },
+        { success: false, error: "Invalid pipeline stage or candidate not found" },
         { status: 400 }
-      );
-    }
-
-    // Verify candidate exists
-    const [candidate] = await db
-      .select()
-      .from(candidates)
-      .where(eq(candidates.id, id));
-
-    if (!candidate) {
-      return NextResponse.json(
-        { success: false, error: "Candidate not found" },
-        { status: 404 }
       );
     }
 

@@ -41,35 +41,30 @@ interface UploadingFile {
 }
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
+  transcript: FileText,
+  portfolio: FileText,
+  note: FileText,
+  contract: FileText,
+  other: File,
+  // Legacy types (for existing attachments)
   resume: FileText,
   recording: Music,
-  transcript: FileText,
   homework: FileText,
-  note: FileText,
-  offer_letter: FileText,
-  contract: FileText,
-  video: Video,
-  other: File,
+  ai_analysis: FileText,
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  resume: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  recording: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   transcript: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-  homework: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  portfolio: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   note: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  offer_letter: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   contract: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   other: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  // Legacy types (for existing attachments)
+  resume: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  recording: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  homework: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  ai_analysis: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
 };
-
-// Infer file type from mime type
-function inferFileType(mimeType: string): string {
-  if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) return "recording";
-  if (mimeType === "application/pdf") return "resume";
-  if (mimeType.startsWith("text/")) return "note";
-  return "other";
-}
 
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
@@ -319,9 +314,8 @@ export function StageAttachments({
         )
       );
 
-      // Infer file type or use selected type
-      const fileType = selectedType === "other" ? inferFileType(file.type) : selectedType;
-      const result = await uploadFile(file, fileType);
+      // Use selected type directly
+      const result = await uploadFile(file, selectedType);
 
       if (result) {
         uploadedAttachments.push(result);
@@ -758,21 +752,24 @@ export function StageAttachments({
                           )}
                         </Button>
                       )}
-                      {/* Re-process button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleReprocess(attachment.id)}
-                        disabled={reprocessingId === attachment.id || isProcessing}
-                        className="text-amber-600 hover:text-amber-700"
-                        title="重新 AI 处理"
-                      >
-                        {reprocessingId === attachment.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RotateCcw className="w-4 h-4" />
-                        )}
-                      </Button>
+                      {/* PDF: Open in new tab for viewing; Others: Download */}
+                      {attachment.mimeType === "application/pdf" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <a
+                            href={attachment.blobUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="在新标签页中查看"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -784,6 +781,7 @@ export function StageAttachments({
                           target="_blank"
                           rel="noopener noreferrer"
                           download={attachment.fileName}
+                          title="下载"
                         >
                           <Download className="w-4 h-4" />
                         </a>

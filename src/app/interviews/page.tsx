@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { Calendar, Users, Video, Phone, MapPin, Clock } from "lucide-react";
-import { db, interviewSessions, candidates, INTERVIEW_SESSION_STATUSES } from "@/db";
+import { db, interviewSessions, candidates, templateStages, INTERVIEW_SESSION_STATUSES } from "@/db";
 import { eq, desc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { InterviewFilters, CreateInterviewModal } from "@/components/interviews";
@@ -83,6 +83,28 @@ export default async function InterviewsPage() {
     .from(candidates)
     .where(eq(candidates.status, "active"));
 
+  // Fetch all unique stages from templates for filters
+  const allTemplateStages = await db.select().from(templateStages);
+  const uniqueStagesMap = new Map<string, string>();
+  allTemplateStages.forEach(s => {
+    if (!uniqueStagesMap.has(s.name)) {
+      uniqueStagesMap.set(s.name, s.displayName);
+    }
+  });
+  // Convert to array and combine with default stages
+  const allStages = Array.from(uniqueStagesMap.entries()).map(([name, displayName]) => ({
+    name,
+    displayName,
+  }));
+  // Add default stages if not already present
+  Object.entries(STAGE_LABELS).forEach(([name, displayName]) => {
+    if (!uniqueStagesMap.has(name)) {
+      allStages.push({ name, displayName });
+    }
+  });
+  // Create a lookup map for stage display names
+  const stageDisplayMap = new Map(allStages.map(s => [s.name, s.displayName]));
+
   const formatDate = (date: Date | null) => {
     if (!date) return "未安排";
     return new Date(date).toLocaleDateString("zh-CN", {
@@ -112,7 +134,7 @@ export default async function InterviewsPage() {
             管理所有候选人的面试安排
           </p>
         </div>
-        <CreateInterviewModal candidates={allCandidates} />
+        <CreateInterviewModal candidates={allCandidates} stages={allStages} />
       </div>
 
       {/* Status Summary */}
@@ -133,7 +155,7 @@ export default async function InterviewsPage() {
 
       {/* Filters */}
       <Suspense fallback={<div className="mb-6 h-10" />}>
-        <InterviewFilters />
+        <InterviewFilters stages={allStages} />
       </Suspense>
 
       {/* Interviews List */}
@@ -179,7 +201,7 @@ export default async function InterviewsPage() {
                                 {candidate?.name || "Unknown Candidate"}
                                 {candidate && (
                                   <span className="text-zinc-400 dark:text-zinc-500 ml-2">
-                                    · {STAGE_LABELS[candidate.pipelineStage] || candidate.pipelineStage}
+                                    · {stageDisplayMap.get(candidate.pipelineStage) || candidate.pipelineStage}
                                   </span>
                                 )}
                               </p>

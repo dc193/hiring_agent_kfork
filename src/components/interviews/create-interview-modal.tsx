@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { INTERVIEW_TYPES, PIPELINE_STAGES } from "@/db/schema";
+import { INTERVIEW_TYPES } from "@/db/schema";
 
 interface Candidate {
   id: string;
@@ -12,8 +12,14 @@ interface Candidate {
   pipelineStage: string;
 }
 
+interface Stage {
+  name: string;
+  displayName: string;
+}
+
 interface CreateInterviewModalProps {
   candidates: Candidate[];
+  stages?: Stage[];
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -26,17 +32,9 @@ const TYPE_LABELS: Record<string, string> = {
   case_study: "案例分析",
 };
 
-const STAGE_LABELS: Record<string, string> = {
-  resume_review: "简历筛选",
-  phone_screen: "电话面试",
-  homework: "作业",
-  team_interview: "Team 面试",
-  consultant_review: "外部顾问",
-  final_interview: "终面",
-  offer: "Offer",
-};
-
-export function CreateInterviewModal({ candidates }: CreateInterviewModalProps) {
+export function CreateInterviewModal({ candidates, stages = [] }: CreateInterviewModalProps) {
+  // Create a lookup map for stage display names
+  const stageDisplayMap = new Map(stages.map(s => [s.name, s.displayName]));
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -137,7 +135,7 @@ export function CreateInterviewModal({ candidates }: CreateInterviewModalProps) 
                   <option value="">选择候选人...</option>
                   {candidates.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({STAGE_LABELS[c.pipelineStage]})
+                      {c.name} ({stageDisplayMap.get(c.pipelineStage) || c.pipelineStage})
                     </option>
                   ))}
                 </select>
@@ -182,9 +180,9 @@ export function CreateInterviewModal({ candidates }: CreateInterviewModalProps) 
                     className="w-full px-3 py-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm"
                   >
                     <option value="">使用候选人当前阶段</option>
-                    {PIPELINE_STAGES.map((stage) => (
-                      <option key={stage} value={stage}>
-                        {STAGE_LABELS[stage]}
+                    {stages.map((stage) => (
+                      <option key={stage.name} value={stage.name}>
+                        {stage.displayName}
                       </option>
                     ))}
                   </select>

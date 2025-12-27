@@ -13,7 +13,7 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
 
-  const handleFile = useCallback(async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     setError(null);
     setFileName(file.name);
     setIsLoading(true);
@@ -47,9 +47,9 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
 
     const file = e.dataTransfer.files[0];
     if (file) {
-      handleFile(file);
+      uploadFile(file);
     }
-  }, [handleFile]);
+  }, [uploadFile]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -64,9 +64,9 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleFile(file);
+      uploadFile(file);
     }
-  }, [handleFile]);
+  }, [uploadFile]);
 
   return (
     <div className="w-full max-w-2xl mx-auto">
@@ -97,7 +97,7 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
             <>
               <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-lg font-medium text-zinc-700 dark:text-zinc-300">
-                Parsing resume...
+                正在解析简历...
               </p>
               {fileName && (
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2">
@@ -121,13 +121,13 @@ export default function ResumeUploader({ onParsed }: ResumeUploaderProps) {
                 />
               </svg>
               <p className="text-lg font-medium text-zinc-700 dark:text-zinc-300">
-                Drop your resume here
+                拖拽简历到此处
               </p>
               <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2">
-                or click to browse
+                或点击选择文件
               </p>
               <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-4">
-                Supports PDF, DOC, DOCX, TXT
+                支持 PDF、DOC、DOCX、TXT 格式
               </p>
             </>
           )}

@@ -35,10 +35,82 @@ export const ATTACHMENT_TYPES = [
 export type AttachmentType = typeof ATTACHMENT_TYPES[number];
 
 // ============================================
+// Table: pipeline_templates (流程模板)
+// ============================================
+export const pipelineTemplates = pgTable("pipeline_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  isDefault: varchar("is_default", { length: 10 }).default("false"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table: template_stages (模板阶段)
+// ============================================
+export const templateStages = pgTable("template_stages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").notNull().references(() => pipelineTemplates.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  description: text("description"),
+  systemPrompt: text("system_prompt"), // 阶段系统指令，用于AI分析时的通用指令
+  orderIndex: integer("order_index").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================
+// 上下文来源类型
+// ============================================
+export const CONTEXT_SOURCES = [
+  "resume",           // 简历原文
+  "profile",          // Profile（候选人画像）
+  "preference",       // Preference（候选人偏好）
+  "stage_attachments", // 当前阶段附件
+  "history_attachments", // 历史阶段附件
+  "history_reports",  // 历史 AI 报告
+  "interview_notes",  // 面试记录
+] as const;
+
+export type ContextSource = typeof CONTEXT_SOURCES[number];
+
+// ============================================
+// Table: stage_prompts (阶段Prompt配置)
+// ============================================
+export const stagePrompts = pgTable("stage_prompts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stageId: uuid("stage_id").notNull().references(() => templateStages.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  instructions: text("instructions").notNull(),
+  contextSources: jsonb("context_sources").$type<ContextSource[]>().default([]), // 保留字段但不再使用
+  referenceContent: text("reference_content"), // 保留字段但不再使用，改用 promptReferenceFiles
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// Table: prompt_reference_files (Prompt参考文件)
+// 模板级别的参考资料文件
+// ============================================
+export const promptReferenceFiles = pgTable("prompt_reference_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  promptId: uuid("prompt_id").notNull().references(() => stagePrompts.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  blobUrl: varchar("blob_url", { length: 1000 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================
 // Table 1: candidates (候选人主表)
 // ============================================
 export const candidates = pgTable("candidates", {
   id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").references(() => pipelineTemplates.id, { onDelete: "set null" }),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }),
@@ -113,17 +185,25 @@ export const pipelineHistory = pgTable("pipeline_history", {
 
 // ============================================
 // Table 6: attachments (附件 - 指向 Blob)
+// 解耦架构：附件属于候选人，可关联阶段/prompt用于断链检测
 // ============================================
 export const attachments = pgTable("attachments", {
   id: uuid("id").primaryKey().defaultRandom(),
   candidateId: uuid("candidate_id").notNull().references(() => candidates.id, { onDelete: "cascade" }),
-  pipelineStage: varchar("pipeline_stage", { length: 50 }).notNull(), // 所属阶段
-  type: varchar("type", { length: 50 }).notNull(), // resume/recording/transcript/homework/note/other
+  // 关联字段 - 用于断链检测
+  stageId: uuid("stage_id").references(() => templateStages.id, { onDelete: "set null" }), // 关联的阶段ID
+  sourcePromptId: uuid("source_prompt_id").references(() => stagePrompts.id, { onDelete: "set null" }), // 如果是AI生成的，记录来源prompt
+  // 快照字段 - 记录创建时的名称，用于断链后显示
+  pipelineStage: varchar("pipeline_stage", { length: 50 }), // 创建时的阶段名称快照
+  promptNameSnapshot: varchar("prompt_name_snapshot", { length: 255 }), // 创建时的prompt名称快照
+  // 文件信息
+  type: varchar("type", { length: 50 }).notNull(), // resume/recording/transcript/homework/note/ai_analysis/other
   fileName: varchar("file_name", { length: 500 }).notNull(),
   fileSize: integer("file_size"), // 文件大小（字节）
   mimeType: varchar("mime_type", { length: 100 }), // 文件类型
   blobUrl: varchar("blob_url", { length: 1000 }).notNull(),
   description: text("description"), // 附件描述/备注
+  tags: jsonb("tags").$type<string[]>().default([]), // 标签，用于分类和搜索
   uploadedBy: varchar("uploaded_by", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -752,5 +832,11 @@ export type PipelineStageConfig = typeof pipelineStageConfigs.$inferSelect;
 export type NewPipelineStageConfig = typeof pipelineStageConfigs.$inferInsert;
 export type ProcessingJob = typeof processingJobs.$inferSelect;
 export type NewProcessingJob = typeof processingJobs.$inferInsert;
-export type GlobalSetting = typeof globalSettings.$inferSelect;
-export type NewGlobalSetting = typeof globalSettings.$inferInsert;
+export type PipelineTemplate = typeof pipelineTemplates.$inferSelect;
+export type NewPipelineTemplate = typeof pipelineTemplates.$inferInsert;
+export type TemplateStage = typeof templateStages.$inferSelect;
+export type NewTemplateStage = typeof templateStages.$inferInsert;
+export type StagePrompt = typeof stagePrompts.$inferSelect;
+export type NewStagePrompt = typeof stagePrompts.$inferInsert;
+export type PromptReferenceFile = typeof promptReferenceFiles.$inferSelect;
+export type NewPromptReferenceFile = typeof promptReferenceFiles.$inferInsert;

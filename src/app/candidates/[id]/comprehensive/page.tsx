@@ -10,9 +10,10 @@ import {
   interviewEvaluations,
   sessionQuestions,
   interviewNotes,
+  templateStages,
   PIPELINE_STAGES,
 } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge, MarkdownPreview } from "@/components/ui";
 
 // Helper to check if file is markdown
@@ -88,6 +89,23 @@ export default async function ComprehensivePage({
     notFound();
   }
 
+  // Get stages - either from template or use defaults
+  let stagesList: { name: string; displayName: string }[] = [];
+  if (candidate.templateId) {
+    const templateStagesData = await safeQuery(() =>
+      db
+        .select()
+        .from(templateStages)
+        .where(eq(templateStages.templateId, candidate.templateId!))
+        .orderBy(asc(templateStages.orderIndex))
+    );
+    stagesList = templateStagesData.map(s => ({ name: s.name, displayName: s.displayName }));
+  }
+  // Fall back to default stages if no template or no stages found
+  if (stagesList.length === 0) {
+    stagesList = PIPELINE_STAGES.map(s => ({ name: s, displayName: STAGE_LABELS[s] || s }));
+  }
+
   // Fetch all related data
   const [
     allAttachments,
@@ -112,9 +130,9 @@ export default async function ComprehensivePage({
     })
   );
 
-  // Group attachments by stage
-  const attachmentsByStage = PIPELINE_STAGES.reduce((acc, stage) => {
-    acc[stage] = allAttachments.filter((a) => a.pipelineStage === stage);
+  // Group attachments by stage (use stage name as key)
+  const attachmentsByStage = stagesList.reduce((acc, stage) => {
+    acc[stage.name] = allAttachments.filter((a) => a.pipelineStage === stage.name);
     return acc;
   }, {} as Record<string, typeof allAttachments>);
 
@@ -128,14 +146,14 @@ export default async function ComprehensivePage({
   }, {} as Record<string, typeof allProcessingJobs>);
 
   // Group sessions by stage
-  const sessionsByStage = PIPELINE_STAGES.reduce((acc, stage) => {
-    acc[stage] = sessionDetails.filter((sd) => sd.session.pipelineStage === stage);
+  const sessionsByStage = stagesList.reduce((acc, stage) => {
+    acc[stage.name] = sessionDetails.filter((sd) => sd.session.pipelineStage === stage.name);
     return acc;
   }, {} as Record<string, typeof sessionDetails>);
 
   // Group notes by stage
-  const notesByStage = PIPELINE_STAGES.reduce((acc, stage) => {
-    acc[stage] = allNotes.filter((n) => n.stage === stage);
+  const notesByStage = stagesList.reduce((acc, stage) => {
+    acc[stage.name] = allNotes.filter((n) => n.stage === stage.name);
     return acc;
   }, {} as Record<string, typeof allNotes>);
 
@@ -168,7 +186,7 @@ export default async function ComprehensivePage({
               </p>
             </div>
             <Badge variant="secondary" className="text-sm">
-              当前阶段: {STAGE_LABELS[candidate.pipelineStage]}
+              当前阶段: {stagesList.find(s => s.name === candidate.pipelineStage)?.displayName || candidate.pipelineStage}
             </Badge>
           </div>
 
@@ -195,23 +213,24 @@ export default async function ComprehensivePage({
       </Card>
 
       {/* Timeline by Stage */}
-      {PIPELINE_STAGES.map((stage) => {
-        const stageAttachments = attachmentsByStage[stage];
-        const stageSessions = sessionsByStage[stage];
-        const stageNotes = notesByStage[stage];
+      {stagesList.map((stage, index) => {
+        const stageAttachments = attachmentsByStage[stage.name] || [];
+        const stageSessions = sessionsByStage[stage.name] || [];
+        const stageNotes = notesByStage[stage.name] || [];
         const hasContent = stageAttachments.length > 0 || stageSessions.length > 0 || stageNotes.length > 0;
 
         if (!hasContent) return null;
 
-        const isCurrentStage = candidate.pipelineStage === stage;
-        const isPastStage = PIPELINE_STAGES.indexOf(candidate.pipelineStage as typeof PIPELINE_STAGES[number]) > PIPELINE_STAGES.indexOf(stage);
+        const isCurrentStage = candidate.pipelineStage === stage.name;
+        const currentStageIndex = stagesList.findIndex(s => s.name === candidate.pipelineStage);
+        const isPastStage = currentStageIndex > index;
 
         return (
           <Section
-            key={stage}
+            key={stage.name}
             title={
               <div className="flex items-center gap-2">
-                <span>{STAGE_LABELS[stage]}</span>
+                <span>{stage.displayName}</span>
                 {isCurrentStage && (
                   <Badge variant="default" className="bg-blue-500 text-xs">当前</Badge>
                 )}

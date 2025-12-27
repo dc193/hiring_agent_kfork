@@ -6,17 +6,7 @@ import Link from "next/link";
 import { ChevronRight, ChevronLeft, Check, X, Archive, RotateCcw, AlertCircle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PIPELINE_STAGES, CANDIDATE_STATUSES } from "@/db/schema";
-
-const STAGE_LABELS: Record<string, string> = {
-  resume_review: "简历筛选",
-  phone_screen: "电话面试",
-  homework: "作业",
-  team_interview: "Team 面试",
-  consultant_review: "外部顾问",
-  final_interview: "终面",
-  offer: "Offer",
-};
+import { CANDIDATE_STATUSES } from "@/db/schema";
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Active",
@@ -32,21 +22,28 @@ const STATUS_COLORS: Record<string, string> = {
   hired: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
 };
 
+interface StageInfo {
+  name: string;
+  displayName: string;
+}
+
 interface PipelineControlsProps {
   candidateId: string;
   currentStage: string;
   currentStatus: string;
+  stages: StageInfo[];
 }
 
-export function PipelineControls({ candidateId, currentStage, currentStatus }: PipelineControlsProps) {
+export function PipelineControls({ candidateId, currentStage, currentStatus, stages }: PipelineControlsProps) {
   const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [moveNote, setMoveNote] = useState("");
 
-  const currentStageIndex = PIPELINE_STAGES.indexOf(currentStage as typeof PIPELINE_STAGES[number]);
-  const canMoveForward = currentStageIndex < PIPELINE_STAGES.length - 1;
+  const stageNames = stages.map(s => s.name);
+  const currentStageIndex = stageNames.indexOf(currentStage);
+  const canMoveForward = currentStageIndex < stages.length - 1;
   const canMoveBack = currentStageIndex > 0;
 
   const updateCandidate = async (updates: { status?: string; pipelineStage?: string; note?: string }) => {
@@ -73,9 +70,9 @@ export function PipelineControls({ candidateId, currentStage, currentStatus }: P
 
   const moveToStage = (direction: "forward" | "back") => {
     const newIndex = direction === "forward" ? currentStageIndex + 1 : currentStageIndex - 1;
-    if (newIndex >= 0 && newIndex < PIPELINE_STAGES.length) {
+    if (newIndex >= 0 && newIndex < stages.length) {
       updateCandidate({
-        pipelineStage: PIPELINE_STAGES[newIndex],
+        pipelineStage: stageNames[newIndex],
         note: moveNote || undefined,
       });
     }
@@ -83,39 +80,40 @@ export function PipelineControls({ candidateId, currentStage, currentStatus }: P
 
   return (
     <div className="space-y-4">
-      {/* Pipeline Progress */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {PIPELINE_STAGES.map((stage, index) => (
-          <div key={stage} className="flex items-center">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  if (index !== currentStageIndex) {
-                    updateCandidate({ pipelineStage: stage });
-                  }
-                }}
-                disabled={isUpdating}
-                className={`px-3 py-1.5 rounded-l-full text-sm font-medium transition-colors ${
-                  index <= currentStageIndex
-                    ? "bg-blue-500 text-white hover:bg-blue-600"
-                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                } ${isUpdating ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-              >
-                {STAGE_LABELS[stage]}
-              </button>
+      {/* Pipeline Progress - 横向滚动 */}
+      <div className="relative">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600">
+          {stages.map((stage, index) => (
+            <div key={stage.name} className="flex items-center flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    if (index !== currentStageIndex) {
+                      updateCandidate({ pipelineStage: stage.name });
+                    }
+                  }}
+                  disabled={isUpdating}
+                  className={`px-3 py-1.5 rounded-l-full text-sm font-medium transition-colors whitespace-nowrap ${
+                    index <= currentStageIndex
+                      ? "bg-blue-500 text-white hover:bg-blue-600"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                  } ${isUpdating ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  {stage.displayName}
+                </button>
               <Link
-                href={`/candidates/${candidateId}/stages/${stage}`}
+                href={`/candidates/${candidateId}/stages/${stage.name}`}
                 className={`p-1.5 rounded-r-full transition-colors ${
                   index <= currentStageIndex
                     ? "bg-blue-600 text-white hover:bg-blue-700"
                     : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600"
                 }`}
-                title={`查看 ${STAGE_LABELS[stage]} 材料`}
+                title={`查看 ${stage.displayName} 材料`}
               >
                 <FolderOpen className="w-4 h-4" />
               </Link>
             </div>
-            {index < PIPELINE_STAGES.length - 1 && (
+            {index < stages.length - 1 && (
               <div
                 className={`w-6 h-0.5 ${
                   index < currentStageIndex
@@ -126,6 +124,7 @@ export function PipelineControls({ candidateId, currentStage, currentStatus }: P
             )}
           </div>
         ))}
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -192,11 +191,11 @@ export function PipelineControls({ candidateId, currentStage, currentStatus }: P
       </div>
 
       {/* Quick Status Actions */}
-      {currentStatus === "active" && currentStage === "offer" && (
+      {currentStatus === "active" && currentStageIndex === stages.length - 1 && (
         <div className="flex items-center gap-2 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
           <Check className="w-5 h-5 text-green-600" />
           <span className="text-sm text-green-700 dark:text-green-300 flex-1">
-            Candidate is at offer stage. Ready to mark as hired?
+            Candidate is at final stage. Ready to mark as hired?
           </span>
           <Button
             size="sm"

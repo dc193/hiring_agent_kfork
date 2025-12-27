@@ -1,10 +1,8 @@
-import { db, pipelineStageConfigs, globalSettings, PIPELINE_STAGES, GLOBAL_SETTING_KEYS } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, pipelineTemplates, templateStages, stagePrompts } from "@/db";
 import { PageLayout, Section, Card, CardContent } from "@/components/ui";
 import { Settings as SettingsIcon } from "lucide-react";
-import { StageConfigList } from "@/components/settings/stage-config-list";
-import { ResumeEvaluationConfig } from "@/components/settings/resume-evaluation-config";
-import { StageSummaryConfig } from "@/components/settings/stage-summary-config";
+import { TemplateList } from "@/components/settings/template-list";
+import { eq, asc } from "drizzle-orm";
 
 // Force dynamic rendering - don't cache this page
 export const dynamic = "force-dynamic";
@@ -35,74 +33,40 @@ async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = [])
   }
 }
 
-// Default stage configurations
-const DEFAULT_STAGE_CONFIGS = PIPELINE_STAGES.map((stage) => ({
-  stage,
-  displayName: {
-    resume_review: "简历筛选",
-    phone_screen: "电话面试",
-    homework: "作业",
-    team_interview: "Team 面试",
-    consultant_review: "外部顾问",
-    final_interview: "终面",
-    offer: "Offer",
-  }[stage] || stage,
-  description: {
-    resume_review: "初步筛选候选人简历，评估基本条件是否符合岗位要求",
-    phone_screen: "通过电话/视频初步了解候选人，确认基本信息和意向",
-    homework: "分配技术作业或案例分析，评估实际能力",
-    team_interview: "与团队成员进行深度技术面试和文化匹配评估",
-    consultant_review: "外部顾问或专家对候选人进行独立评估和分析",
-    final_interview: "最终决策面试，通常由高层或HR参与",
-    offer: "发放录用通知，进行薪资谈判",
-  }[stage] || "",
-  isActive: "true" as const,
-  processingRules: [],
-  defaultAnalysisPrompt: null,
-  evaluationDimensions: [],
-  recommendedQuestionCategories: [],
-}));
-
 export default async function SettingsPage() {
-  // Get existing stage configurations
-  const existingConfigs = await safeQuery(() =>
-    db.select().from(pipelineStageConfigs)
+  // Get all templates
+  const templates = await safeQuery(() =>
+    db.select().from(pipelineTemplates).orderBy(asc(pipelineTemplates.createdAt))
   );
 
-  // Get resume evaluation prompt
-  let resumeEvaluationPrompt: string | null = null;
-  try {
-    const [setting] = await db
-      .select()
-      .from(globalSettings)
-      .where(eq(globalSettings.key, GLOBAL_SETTING_KEYS.RESUME_EVALUATION_PROMPT));
-    resumeEvaluationPrompt = setting?.value || null;
-  } catch (error) {
-    // Table might not exist yet
-    console.log("Could not fetch resume evaluation prompt:", error);
-  }
+  // Get stages and prompts for each template
+  const templatesWithDetails = await Promise.all(
+    templates.map(async (template) => {
+      const stages = await safeQuery(() =>
+        db
+          .select()
+          .from(templateStages)
+          .where(eq(templateStages.templateId, template.id))
+          .orderBy(asc(templateStages.orderIndex))
+      );
 
-  // Debug: log what we got from the database
-  console.log("Existing configs from DB:", existingConfigs.length, "items");
-  existingConfigs.forEach((c) => {
-    console.log(`  - ${c.stage}: ${c.processingRules?.length || 0} rules`);
-  });
+      const stagesWithPrompts = await Promise.all(
+        stages.map(async (stage) => {
+          const prompts = await safeQuery(() =>
+            db
+              .select()
+              .from(stagePrompts)
+              .where(eq(stagePrompts.stageId, stage.id))
+              .orderBy(asc(stagePrompts.orderIndex))
+          );
 
-  // Merge existing configs with defaults, ensuring null arrays are converted to empty arrays
-  const stageConfigs = PIPELINE_STAGES.map((stage) => {
-    const existing = existingConfigs.find((c) => c.stage === stage);
-    if (existing) {
-      console.log(`Found existing config for ${stage}, rules:`, existing.processingRules);
-      return {
-        ...existing,
-        processingRules: existing.processingRules || [],
-        evaluationDimensions: existing.evaluationDimensions || [],
-        recommendedQuestionCategories: existing.recommendedQuestionCategories || [],
-      };
-    }
-    console.log(`No existing config for ${stage}, using default`);
-    return DEFAULT_STAGE_CONFIGS.find((c) => c.stage === stage)!;
-  });
+          return { ...stage, prompts };
+        })
+      );
+
+      return { ...template, stages: stagesWithPrompts };
+    })
+  );
 
   return (
     <PageLayout>
@@ -116,41 +80,20 @@ export default async function SettingsPage() {
             系统设置
           </h1>
           <p className="text-zinc-500 mt-1">
-            配置招聘流程各阶段的自动处理规则
+            管理招聘流程模板，配置各阶段的 AI 分析 Prompt
           </p>
         </div>
       </div>
 
-      {/* Resume Evaluation Prompt */}
-      <Section title="简历评估配置" className="mb-6">
-        <ResumeEvaluationConfig initialPrompt={resumeEvaluationPrompt} />
-      </Section>
-
-      {/* Stage Summary Prompts */}
-      <Section title="阶段总结配置" className="mb-6">
+      {/* Pipeline Templates */}
+      <Section title="流程模板管理" className="mb-6">
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-zinc-500 mb-6">
-              配置每个阶段的总结生成 Prompt。点击候选人阶段页面的「生成总结」按钮时，会使用对应阶段的 Prompt 收集所有材料并生成综合评估报告。
+              创建自定义的招聘流程模板。每个模板可以有不同的阶段，每个阶段可以配置多个 AI 分析 Prompt。
+              上传候选人简历时可以选择使用哪个模板。
             </p>
-            <StageSummaryConfig
-              stages={stageConfigs.map(c => ({
-                stage: c.stage,
-                stageSummaryPrompt: (c as { stageSummaryPrompt?: string | null }).stageSummaryPrompt
-              }))}
-            />
-          </CardContent>
-        </Card>
-      </Section>
-
-      {/* Pipeline Stage Configurations */}
-      <Section title="Pipeline 阶段配置" className="mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-zinc-500 mb-6">
-              配置每个阶段的文件处理规则。当上传特定类型的文件时，系统会自动执行转录、AI分析等处理，并生成报告。
-            </p>
-            <StageConfigList initialConfigs={stageConfigs} />
+            <TemplateList initialTemplates={templatesWithDetails} />
           </CardContent>
         </Card>
       </Section>

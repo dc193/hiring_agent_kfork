@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences, pipelineHistory, CANDIDATE_STATUSES, PIPELINE_STAGES } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, candidatePreferences, pipelineHistory, attachments, CANDIDATE_STATUSES } from "@/db";
+import { eq, and } from "drizzle-orm";
 
 // GET /api/candidates/[id] - Get a single candidate
 export async function GET(
@@ -52,7 +52,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/candidates/[id] - Update candidate status and/or pipeline stage
+// PATCH /api/candidates/[id] - Update candidate status, pipeline stage, or template
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,7 +60,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, pipelineStage, changedBy, note } = body;
+    const { status, pipelineStage, templateId, changedBy, note, updateInitialAttachments } = body;
 
     // Check if candidate exists
     const [candidate] = await db
@@ -75,7 +75,7 @@ export async function PATCH(
       );
     }
 
-    const updates: { status?: string; pipelineStage?: string; updatedAt: Date } = {
+    const updates: { status?: string; pipelineStage?: string; templateId?: string; updatedAt: Date } = {
       updatedAt: new Date(),
     };
 
@@ -90,14 +90,13 @@ export async function PATCH(
       updates.status = status;
     }
 
-    // Validate and set pipeline stage if provided
+    // Set template if provided
+    if (templateId !== undefined) {
+      updates.templateId = templateId;
+    }
+
+    // Set pipeline stage if provided (no validation against fixed stages since we use custom templates)
     if (pipelineStage !== undefined) {
-      if (!PIPELINE_STAGES.includes(pipelineStage)) {
-        return NextResponse.json(
-          { success: false, error: `Invalid pipeline stage. Must be one of: ${PIPELINE_STAGES.join(", ")}` },
-          { status: 400 }
-        );
-      }
       updates.pipelineStage = pipelineStage;
 
       // Record pipeline history
@@ -116,6 +115,19 @@ export async function PATCH(
       .set(updates)
       .where(eq(candidates.id, id))
       .returning();
+
+    // If updateInitialAttachments is true, update all attachments with "initial" stage to the new pipelineStage
+    if (updateInitialAttachments && pipelineStage) {
+      await db
+        .update(attachments)
+        .set({ pipelineStage })
+        .where(
+          and(
+            eq(attachments.candidateId, id),
+            eq(attachments.pipelineStage, "initial")
+          )
+        );
+    }
 
     return NextResponse.json({
       success: true,

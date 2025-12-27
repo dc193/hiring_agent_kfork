@@ -1,11 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { ParsedResume, ParseResumeResponse } from "@/types/resume";
-import { db, candidates, workExperiences, educations, projects, candidateProfiles, globalSettings, attachments, GLOBAL_SETTING_KEYS } from "@/db";
-import { eq } from "drizzle-orm";
 import { put } from "@vercel/blob";
+import { ParsedResume, ParseResumeResponse } from "@/types/resume";
+import { db, candidates, workExperiences, educations, projects, candidateProfiles, attachments } from "@/db";
 
 const anthropic = new Anthropic();
+
+// Type for profile analysis response
+interface ProfileAnalysisData {
+  careerStage?: string;
+  yearsOfExperience?: number;
+  hardSkills?: Array<{name: string; level: number}>;
+  softSkills?: Array<{name: string; level: number}>;
+  certifications?: string[];
+  knowledgeStructure?: {breadth: number; depth: number};
+  behaviorPatterns?: {
+    communicationStyle?: string;
+    decisionStyle?: string;
+    collaborationStyle?: string;
+    pressureResponse?: string;
+    conflictHandling?: string;
+  };
+  profileSummary?: string;
+}
+
+// Clean JSON string to fix common issues from LLM output
+function cleanJsonString(str: string): string {
+  // Remove trailing commas before ] or }
+  let cleaned = str.replace(/,(\s*[}\]])/g, '$1');
+  // Remove any BOM or invisible characters
+  cleaned = cleaned.replace(/^\uFEFF/, '');
+  return cleaned;
+}
+
+// Safely parse JSON with error recovery
+function safeJsonParse(str: string): unknown {
+  const jsonMatch = str.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON object found in response");
+  }
+
+  let jsonStr = cleanJsonString(jsonMatch[0]);
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Try more aggressive cleaning
+    // Remove any control characters
+    jsonStr = jsonStr.replace(/[\x00-\x1F\x7F]/g, ' ');
+    // Fix common quote issues
+    jsonStr = jsonStr.replace(/'/g, '"');
+    return JSON.parse(jsonStr);
+  }
+}
 
 const RESUME_PARSE_PROMPT = `You are an expert resume parser. Extract structured information from the following resume text.
 
@@ -125,6 +172,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       );
     }
 
+    // Use a placeholder stage - template will be assigned later in candidate detail page
+    const initialStage = "initial";
+
     // Read file content
     const fileBuffer = await file.arrayBuffer();
     const fileType = file.type;
@@ -183,21 +233,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       ? parseResponse.content[0].text
       : "";
 
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // Extract and parse JSON from response
+    let parsedData: ParsedResume;
+    try {
+      parsedData = safeJsonParse(responseText) as ParsedResume;
+    } catch (parseError) {
+      console.error("JSON parse error:", parseError, "Response:", responseText.substring(0, 500));
       return NextResponse.json(
         { success: false, error: "Failed to parse resume structure" },
         { status: 500 }
       );
     }
 
-    const parsedData = JSON.parse(jsonMatch[0]);
-
     // ============================================
     // Generate Profile Analysis (档案画像)
     // ============================================
-    let profileData = null;
+    let profileData: ProfileAnalysisData | null = null;
     try {
       const profileResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -214,9 +265,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
         ? profileResponse.content[0].text
         : "";
 
-      const profileJsonMatch = profileText.match(/\{[\s\S]*\}/);
-      if (profileJsonMatch) {
-        profileData = JSON.parse(profileJsonMatch[0]);
+      try {
+        profileData = safeJsonParse(profileText) as ProfileAnalysisData;
+      } catch (profileParseError) {
+        console.error("Profile JSON parse error:", profileParseError);
+        // Continue without profile data
       }
     } catch (profileError) {
       console.error("Profile analysis error:", profileError);
@@ -229,8 +282,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
     let candidateId: string;
 
     try {
-      // 1. Create candidate record
+      // 1. Create candidate record (no template assigned - will be selected later)
       const [newCandidate] = await db.insert(candidates).values({
+        templateId: null,
         name: parsedData.basicInfo?.name || "Unknown",
         email: parsedData.basicInfo?.email || null,
         phone: parsedData.basicInfo?.phone || null,
@@ -242,11 +296,36 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
         skills: parsedData.skills || [],
         resumeRawText: textContent,
         status: "active",
-        pipelineStage: "resume_review",
+        pipelineStage: initialStage,
       }).returning();
 
       candidateId = newCandidate.id;
       console.log("Created candidate:", candidateId);
+
+      // 2. Upload resume file to Blob storage and create attachment
+      try {
+        const blob = await put(`resumes/${candidateId}/${file.name}`, file, {
+          access: "public",
+          contentType: fileType,
+        });
+
+        await db.insert(attachments).values({
+          candidateId,
+          pipelineStage: null, // 简历原文不归属任何阶段
+          type: "resume",
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: fileType,
+          blobUrl: blob.url,
+          description: "简历原文",
+          tags: ["简历原文"],
+          uploadedBy: null,
+        });
+        console.log("Saved resume as attachment:", blob.url);
+      } catch (blobError) {
+        console.error("Failed to save resume as attachment:", blobError);
+        // Continue without failing - resume text is already saved
+      }
     } catch (dbError) {
       console.error("Database insert error:", dbError);
       throw new Error(`Failed to save candidate to database: ${dbError instanceof Error ? dbError.message : "Unknown error"}`);

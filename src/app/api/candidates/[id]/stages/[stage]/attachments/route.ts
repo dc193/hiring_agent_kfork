@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, attachments, candidates, templateStages, PIPELINE_STAGES } from "@/db";
 import { eq, and, desc } from "drizzle-orm";
 import { put, del } from "@vercel/blob";
-import { createProcessingJobs, processAttachmentJobs } from "@/lib/processing";
 
 // Helper: Validate stage against candidate's template or default stages
 // Returns both validity and the normalized stage name (from template)
@@ -99,12 +98,10 @@ export async function POST(
     let attachment;
     let fileType: string;
     let mimeType: string;
-    let isTextNote = false; // Flag to skip AI processing for direct text input
 
     // Check if this is a JSON request (text note) or form data (file upload)
     if (contentType.includes("application/json")) {
-      // Text note submission - human input, no AI processing needed
-      isTextNote = true;
+      // Text note submission
       const body = await request.json();
       const { text, title, type: noteType, uploadedBy } = body;
 
@@ -182,30 +179,11 @@ export async function POST(
         .returning();
     }
 
-    // Check for processing rules and create jobs (skip for text notes - they're human input)
-    let jobIds: string[] = [];
-    if (!isTextNote) {
-      jobIds = await createProcessingJobs(
-        attachment.id,
-        id,
-        stage,
-        mimeType,
-        fileType
-      );
-
-      // Process jobs in background (non-blocking)
-      if (jobIds.length > 0) {
-        // Don't await - let it run in background
-        processAttachmentJobs(attachment.id).catch((error) => {
-          console.error("Background processing failed:", error);
-        });
-      }
-    }
+    // Auto-processing disabled - user prefers manual AI analysis with file selection
 
     return NextResponse.json({
       success: true,
       data: attachment,
-      processingJobs: jobIds.length > 0 ? jobIds : undefined,
     });
   } catch (error) {
     console.error("Failed to upload attachment:", error);

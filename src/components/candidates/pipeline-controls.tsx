@@ -80,26 +80,27 @@ export function PipelineControls({ candidateId, currentStage, currentStatus, sta
 
   return (
     <div className="space-y-4">
-      {/* Pipeline Progress */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {stages.map((stage, index) => (
-          <div key={stage.name} className="flex items-center">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  if (index !== currentStageIndex) {
-                    updateCandidate({ pipelineStage: stage.name });
-                  }
-                }}
-                disabled={isUpdating}
-                className={`px-3 py-1.5 rounded-l-full text-sm font-medium transition-colors ${
-                  index <= currentStageIndex
-                    ? "bg-blue-500 text-white hover:bg-blue-600"
-                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                } ${isUpdating ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-              >
-                {stage.displayName}
-              </button>
+      {/* Pipeline Progress - 横向滚动 */}
+      <div className="relative">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-600">
+          {stages.map((stage, index) => (
+            <div key={stage.name} className="flex items-center flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    if (index !== currentStageIndex) {
+                      updateCandidate({ pipelineStage: stage.name });
+                    }
+                  }}
+                  disabled={isUpdating}
+                  className={`px-3 py-1.5 rounded-l-full text-sm font-medium transition-colors whitespace-nowrap ${
+                    index <= currentStageIndex
+                      ? "bg-blue-500 text-white hover:bg-blue-600"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                  } ${isUpdating ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  {stage.displayName}
+                </button>
               <Link
                 href={`/candidates/${candidateId}/stages/${stage.name}`}
                 className={`p-1.5 rounded-r-full transition-colors ${
@@ -123,6 +124,7 @@ export function PipelineControls({ candidateId, currentStage, currentStatus, sta
             )}
           </div>
         ))}
+        </div>
       </div>
 
       {/* Quick Actions */}

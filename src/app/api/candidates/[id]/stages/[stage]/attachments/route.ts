@@ -5,7 +5,8 @@ import { put, del } from "@vercel/blob";
 import { createProcessingJobs, processAttachmentJobs } from "@/lib/processing";
 
 // Helper: Validate stage against candidate's template or default stages
-async function validateStage(candidateId: string, stage: string): Promise<{ valid: boolean; candidate?: typeof candidates.$inferSelect }> {
+// Returns both validity and the normalized stage name (from template)
+async function validateStage(candidateId: string, stage: string): Promise<{ valid: boolean; candidate?: typeof candidates.$inferSelect; normalizedStage?: string }> {
   const [candidate] = await db
     .select()
     .from(candidates)
@@ -21,12 +22,19 @@ async function validateStage(candidateId: string, stage: string): Promise<{ vali
       .select()
       .from(templateStages)
       .where(eq(templateStages.templateId, candidate.templateId));
-    const validStages = stages.map(s => s.name);
-    return { valid: validStages.includes(stage), candidate };
+
+    // Check both name and displayName for robustness
+    // This handles cases where URL might use displayName or name
+    const matchingStage = stages.find(s => s.name === stage || s.displayName === stage);
+    if (matchingStage) {
+      // Return the stage's name as the normalized identifier
+      return { valid: true, candidate, normalizedStage: matchingStage.name };
+    }
+    return { valid: false, candidate };
   }
 
   // Fall back to default stages
-  return { valid: PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number]), candidate };
+  return { valid: PIPELINE_STAGES.includes(stage as typeof PIPELINE_STAGES[number]), candidate, normalizedStage: stage };
 }
 
 // GET /api/candidates/[id]/stages/[stage]/attachments

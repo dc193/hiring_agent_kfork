@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { db, candidates, attachments, interviewSessions, PIPELINE_STAGES, Attachment, InterviewSession, templateStages, stagePrompts, StagePrompt } from "@/db";
 import { eq, and, desc, asc } from "drizzle-orm";
 import { PageLayout, Section, Card, CardContent, Button, Badge } from "@/components/ui";
-import { StageAttachments, AIAnalysisSection } from "@/components/stages";
+import { StageAttachments, AIAnalysisSection, GenerateSummaryButton } from "@/components/stages";
 
 // Safe query helper for tables that may not exist yet
 async function safeQuery<T>(queryFn: () => Promise<T[]>, defaultValue: T[] = []): Promise<T[]> {
@@ -249,6 +249,15 @@ export default async function StagePage({
                 候选人: <span className="font-medium text-zinc-700 dark:text-zinc-300">{candidate.name}</span>
               </p>
             </div>
+          </div>
+
+          {/* Generate Summary */}
+          <div className="mt-4">
+            <GenerateSummaryButton
+              candidateId={id}
+              stage={stage}
+              stageLabel={STAGE_LABELS[stage]}
+            />
           </div>
 
           {/* Stage Navigation */}

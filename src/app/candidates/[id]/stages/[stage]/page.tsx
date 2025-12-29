@@ -73,7 +73,9 @@ export default async function StagePage({
   }
 
   // Validate stage against template stages or default stages
+  // Check both name and displayName for robustness
   let validStages: string[] = [];
+  let normalizedStage = stage; // The internal stage name to use
   if (candidate.templateId) {
     const templateStagesData = await safeQuery(() =>
       db
@@ -81,11 +83,18 @@ export default async function StagePage({
         .from(templateStages)
         .where(eq(templateStages.templateId, candidate.templateId!))
     );
-    validStages = templateStagesData.map(s => s.name);
+    // Build list of valid stage identifiers (both name and displayName)
+    validStages = templateStagesData.flatMap(s => [s.name, s.displayName]);
+    // Find matching stage and normalize to internal name
+    const matchingStage = templateStagesData.find(s => s.name === stage || s.displayName === stage);
+    if (matchingStage) {
+      normalizedStage = matchingStage.name;
+    }
     console.log("[Stage Page Debug]", {
       candidateId: id,
       templateId: candidate.templateId,
       urlStage: stage,
+      normalizedStage,
       urlStageEncoded: encodeURIComponent(stage),
       validStages,
       candidatePipelineStage: candidate.pipelineStage,
@@ -100,12 +109,16 @@ export default async function StagePage({
     notFound();
   }
 
+  // Use normalizedStage for subsequent queries
+  const stageForQueries = normalizedStage;
+
   // Get prompts for this stage from template
   let stagePromptsData: StagePrompt[] = [];
   let templateStageData: { displayName: string; description: string | null } | null = null;
 
   if (candidate.templateId) {
     // Find the stage in the template that matches the current stage name
+    // Use normalizedStage which has been mapped to the internal name
     const templateStage = await safeQuery(() =>
       db
         .select()
@@ -113,7 +126,7 @@ export default async function StagePage({
         .where(
           and(
             eq(templateStages.templateId, candidate.templateId!),
-            eq(templateStages.name, stage)
+            eq(templateStages.name, stageForQueries)
           )
         )
     );
@@ -236,15 +249,6 @@ export default async function StagePage({
                 候选人: <span className="font-medium text-zinc-700 dark:text-zinc-300">{candidate.name}</span>
               </p>
             </div>
-          </div>
-
-          {/* Generate Summary */}
-          <div className="mt-4">
-            <GenerateSummaryButton
-              candidateId={id}
-              stage={stage}
-              stageLabel={STAGE_LABELS[stage]}
-            />
           </div>
 
           {/* Stage Navigation */}

@@ -24,6 +24,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Attachment } from "@/db/schema";
+import * as XLSX from "xlsx";
+import mammoth from "mammoth";
 
 interface StageAttachmentsProps {
   candidateId: string;
@@ -97,6 +99,7 @@ export function StageAttachments({
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [expandedPreviews, setExpandedPreviews] = useState<Set<string>>(new Set());
   const [previewContents, setPreviewContents] = useState<Record<string, string>>({});
+  const [previewTypes, setPreviewTypes] = useState<Record<string, "text" | "html">>({});
   const [loadingPreviews, setLoadingPreviews] = useState<Set<string>>(new Set());
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
 
@@ -130,16 +133,20 @@ export function StageAttachments({
     }
   };
 
-  // Check if file is previewable (markdown, text - NOT PDF, PDF opens in new tab)
+  // Check if file is previewable (markdown, text, Excel, Word - NOT PDF, PDF opens in new tab)
   const isPreviewable = (fileName: string, mimeType: string | null): boolean => {
+    const name = fileName.toLowerCase();
     return mimeType === "text/markdown" ||
       mimeType?.startsWith("text/") ||
-      fileName.endsWith(".md") ||
-      fileName.endsWith(".txt") ||
-      fileName.endsWith(".json");
+      name.endsWith(".md") ||
+      name.endsWith(".txt") ||
+      name.endsWith(".json") ||
+      name.endsWith(".xlsx") ||
+      name.endsWith(".xls") ||
+      name.endsWith(".docx");
   };
 
-  // Toggle preview for an attachment (text/markdown only - PDF opens in new tab)
+  // Toggle preview for an attachment (text/markdown/Excel/Word - PDF opens in new tab)
   const togglePreview = async (attachment: Attachment) => {
     const id = attachment.id;
 
@@ -156,11 +163,32 @@ export function StageAttachments({
     if (!previewContents[id]) {
       setLoadingPreviews(prev => new Set([...prev, id]));
       try {
+        const fileName = attachment.fileName.toLowerCase();
         const response = await fetch(attachment.blobUrl);
-        const text = await response.text();
-        setPreviewContents(prev => ({ ...prev, [id]: text }));
+
+        if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+          // Excel file - parse with xlsx library
+          const buffer = await response.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const html = XLSX.utils.sheet_to_html(firstSheet, { editable: false });
+          setPreviewContents(prev => ({ ...prev, [id]: html }));
+          setPreviewTypes(prev => ({ ...prev, [id]: "html" }));
+        } else if (fileName.endsWith(".docx")) {
+          // Word file - parse with mammoth library
+          const buffer = await response.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
+          setPreviewContents(prev => ({ ...prev, [id]: result.value }));
+          setPreviewTypes(prev => ({ ...prev, [id]: "html" }));
+        } else {
+          // Text/Markdown/JSON - read as text
+          const text = await response.text();
+          setPreviewContents(prev => ({ ...prev, [id]: text }));
+          setPreviewTypes(prev => ({ ...prev, [id]: "text" }));
+        }
       } catch {
         setPreviewContents(prev => ({ ...prev, [id]: "[无法加载文件内容]" }));
+        setPreviewTypes(prev => ({ ...prev, [id]: "text" }));
       } finally {
         setLoadingPreviews(prev => {
           const next = new Set(prev);
@@ -789,12 +817,19 @@ export function StageAttachments({
                     </div>
                   </div>
 
-                  {/* Preview Content (text/markdown only - PDF opens in new tab) */}
+                  {/* Preview Content (text/markdown/Excel/Word - PDF opens in new tab) */}
                   {isExpanded && previewContent && (
                     <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/30">
-                      <pre className="p-4 text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto">
-                        {previewContent}
-                      </pre>
+                      {previewTypes[attachment.id] === "html" ? (
+                        <div
+                          className="p-4 text-sm text-zinc-700 dark:text-zinc-300 overflow-x-auto max-h-96 overflow-y-auto prose prose-sm dark:prose-invert max-w-none [&_table]:border-collapse [&_table]:w-full [&_td]:border [&_td]:border-zinc-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-zinc-300 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-zinc-100 dark:[&_th]:bg-zinc-700"
+                          dangerouslySetInnerHTML={{ __html: previewContent }}
+                        />
+                      ) : (
+                        <pre className="p-4 text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap font-mono overflow-x-auto max-h-96 overflow-y-auto">
+                          {previewContent}
+                        </pre>
+                      )}
                     </div>
                   )}
                 </div>

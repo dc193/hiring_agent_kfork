@@ -139,6 +139,28 @@ export function StageAttachments({
       fileName.endsWith(".json");
   };
 
+  // Check if file is an Office document (Word, Excel, PowerPoint)
+  const isOfficeFile = (fileName: string, mimeType: string | null): boolean => {
+    const lowerFileName = fileName.toLowerCase();
+    return mimeType === "application/msword" ||
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mimeType === "application/vnd.ms-excel" ||
+      mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      mimeType === "application/vnd.ms-powerpoint" ||
+      mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      lowerFileName.endsWith(".doc") ||
+      lowerFileName.endsWith(".docx") ||
+      lowerFileName.endsWith(".xls") ||
+      lowerFileName.endsWith(".xlsx") ||
+      lowerFileName.endsWith(".ppt") ||
+      lowerFileName.endsWith(".pptx");
+  };
+
+  // Generate Office Online Viewer URL
+  const getOfficeViewerUrl = (blobUrl: string): string => {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(blobUrl)}`;
+  };
+
   // Toggle preview for an attachment (text/markdown only - PDF opens in new tab)
   const togglePreview = async (attachment: Attachment) => {
     const id = attachment.id;
@@ -672,6 +694,7 @@ export function StageAttachments({
               const isDeleting = deletingId === attachment.id;
               const isProcessing = processingAttachments.has(attachment.id);
               const canPreview = isPreviewable(attachment.fileName, attachment.mimeType);
+              const canPreviewOffice = isOfficeFile(attachment.fileName, attachment.mimeType);
               const isExpanded = expandedPreviews.has(attachment.id);
               const isLoadingPreview = loadingPreviews.has(attachment.id);
               const previewContent = previewContents[attachment.id];
@@ -695,7 +718,7 @@ export function StageAttachments({
                         <Badge variant="secondary" className="text-xs">
                           {getTypeLabel(attachment.type)}
                         </Badge>
-                        {canPreview && (
+                        {(canPreview || canPreviewOffice) && (
                           <Badge variant="outline" className="text-xs">
                             可预览
                           </Badge>
@@ -739,8 +762,8 @@ export function StageAttachments({
                           )}
                         </Button>
                       )}
-                      {/* PDF: Open in new tab for viewing; Others: Download */}
-                      {attachment.mimeType === "application/pdf" ? (
+                      {/* PDF: Open in new tab for viewing */}
+                      {attachment.mimeType === "application/pdf" && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -756,7 +779,25 @@ export function StageAttachments({
                             <Eye className="w-4 h-4" />
                           </a>
                         </Button>
-                      ) : null}
+                      )}
+                      {/* Office files: Open in Office Online Viewer */}
+                      {canPreviewOffice && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <a
+                            href={getOfficeViewerUrl(attachment.blobUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="在 Office Online 中预览"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </a>
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"

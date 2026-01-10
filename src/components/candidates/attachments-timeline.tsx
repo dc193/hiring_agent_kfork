@@ -309,21 +309,43 @@ function TextPreviewModal({
 }
 
 // Helper to determine preview type
-function getPreviewType(attachment: Attachment): "pdf" | "text" | "image" | null {
+function getPreviewType(attachment: Attachment): "pdf" | "text" | "image" | "office" | null {
   const { mimeType, fileName } = attachment;
+  const lowerFileName = fileName.toLowerCase();
 
   if (mimeType?.includes("pdf")) return "pdf";
   if (mimeType?.startsWith("image/")) return "image";
   if (
     mimeType?.startsWith("text/") ||
     mimeType === "application/json" ||
-    fileName.endsWith(".md") ||
-    fileName.endsWith(".txt") ||
-    fileName.endsWith(".json") ||
-    fileName.endsWith(".csv")
+    lowerFileName.endsWith(".md") ||
+    lowerFileName.endsWith(".txt") ||
+    lowerFileName.endsWith(".json") ||
+    lowerFileName.endsWith(".csv")
   ) return "text";
 
+  // Office files (Word, Excel, PowerPoint)
+  if (
+    mimeType === "application/msword" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/vnd.ms-excel" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-powerpoint" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    lowerFileName.endsWith(".doc") ||
+    lowerFileName.endsWith(".docx") ||
+    lowerFileName.endsWith(".xls") ||
+    lowerFileName.endsWith(".xlsx") ||
+    lowerFileName.endsWith(".ppt") ||
+    lowerFileName.endsWith(".pptx")
+  ) return "office";
+
   return null;
+}
+
+// Generate Office Online Viewer URL
+function getOfficeViewerUrl(blobUrl: string): string {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(blobUrl)}`;
 }
 
 export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: AttachmentsTimelineProps) {
@@ -465,6 +487,20 @@ export function AttachmentsTimeline({ attachments, stagesWithPrompts = [] }: Att
                                 onClick={() => setPreviewingAttachment(attachment)}
                               >
                                 <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                            );
+                          } else if (previewType === "office") {
+                            // Office files: open via Microsoft Office Online Viewer
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                asChild
+                              >
+                                <a href={getOfficeViewerUrl(attachment.blobUrl)} target="_blank" rel="noopener noreferrer" title="在 Office Online 中预览">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </a>
                               </Button>
                             );
                           } else {

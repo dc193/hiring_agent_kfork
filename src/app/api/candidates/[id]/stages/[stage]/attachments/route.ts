@@ -3,6 +3,9 @@ import { db, attachments, candidates, templateStages, PIPELINE_STAGES } from "@/
 import { eq, and, desc } from "drizzle-orm";
 import { put, del } from "@vercel/blob";
 
+// Increase body size limit to 50MB for file uploads
+export const maxDuration = 60; // 60 seconds timeout for large file uploads
+
 // Helper: Validate stage against candidate's template or default stages
 // Returns both validity and the normalized stage name (from template)
 async function validateStage(candidateId: string, stage: string): Promise<{ valid: boolean; candidate?: typeof candidates.$inferSelect; normalizedStage?: string }> {

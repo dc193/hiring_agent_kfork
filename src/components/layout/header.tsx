@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { FileText, Users, MessageSquare, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { UserMenu } from "@/components/auth"
 
 const navItems = [
   { href: "/", label: "Resume Parser", icon: FileText },
@@ -27,27 +28,32 @@ export function Header() {
               Hiring Agent
             </h1>
           </Link>
-          <nav className="flex items-center gap-6 text-sm">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href ||
-                (item.href !== "/" && pathname.startsWith(item.href))
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 transition-colors",
-                    isActive
-                      ? "text-blue-500 font-medium"
-                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                  )}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
+          <div className="flex items-center gap-6">
+            <nav className="flex items-center gap-6 text-sm">
+              {navItems.map((item) => {
+                const isActive = pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href))
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2 transition-colors",
+                      isActive
+                        ? "text-blue-500 font-medium"
+                        : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    )}
+                  >
+                    <item.icon className="w-4 h-4" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+            <div className="border-l border-zinc-200 dark:border-zinc-700 pl-6">
+              <UserMenu />
+            </div>
+          </div>
         </div>
       </div>
     </header>

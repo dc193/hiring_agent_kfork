@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AuthProvider } from "@/components/auth";
+import { AuthProvider, AuthGuard } from "@/components/auth";
 
 export const metadata: Metadata = {
   title: "Hiring Agent - AI-Powered Resume Parsing",
@@ -16,7 +16,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <AuthProvider>
-          {children}
+          <AuthGuard>
+            {children}
+          </AuthGuard>
         </AuthProvider>
       </body>
     </html>

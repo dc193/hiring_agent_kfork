@@ -30,9 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch user on mount
   const fetchUser = async () => {
     try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const response = await fetch(`${AUTH_CONFIG.serviceUrl}/api/auth/user`, {
         credentials: "include",
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const userData = await response.json();
@@ -41,7 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      // Handle timeout or network errors gracefully
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.warn("Auth check timed out");
+      } else {
+        console.error("Failed to fetch user:", error);
+      }
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -54,8 +66,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Login - redirect to Google login
   const login = () => {
-    const redirect = encodeURIComponent(window.location.href);
-    window.location.href = `${AUTH_CONFIG.serviceUrl}/api/auth/google/login?redirect=${redirect}`;
+    const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const redirect = encodeURIComponent(currentUrl);
+    const loginUrl = `${AUTH_CONFIG.serviceUrl}/api/auth/google/login?redirect=${redirect}`;
+    console.log("Redirecting to:", loginUrl);
+    window.location.href = loginUrl;
   };
 
   // Logout

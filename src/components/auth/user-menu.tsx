@@ -4,9 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { LogIn, LogOut, User, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "./auth-provider";
+import { useRouter } from "next/navigation";
 
 export function UserMenu() {
-  const { user, isLoading, login, logout } = useAuth();
+  const router = useRouter();
+  const { user, isLoading, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -31,13 +33,13 @@ export function UserMenu() {
     );
   }
 
-  // Not logged in
+  // Not logged in - redirect to login page
   if (!user) {
     return (
       <Button
         variant="outline"
         size="sm"
-        onClick={login}
+        onClick={() => router.push("/login")}
         className="gap-2"
       >
         <LogIn className="w-4 h-4" />
@@ -53,17 +55,9 @@ export function UserMenu() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
       >
-        {user.picture ? (
-          <img
-            src={user.picture}
-            alt={user.name}
-            className="w-7 h-7 rounded-full"
-          />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center">
-            <User className="w-4 h-4 text-white" />
-          </div>
-        )}
+        <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center">
+          <User className="w-4 h-4 text-white" />
+        </div>
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 max-w-[120px] truncate">
           {user.name}
         </span>
@@ -72,22 +66,23 @@ export function UserMenu() {
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 py-1 z-50">
+        <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 py-1 z-50">
           {/* User info */}
           <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
             <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
               {user.name}
             </p>
             <p className="text-xs text-zinc-500 truncate">
-              {user.email}
+              @{user.username}
             </p>
           </div>
 
           {/* Logout button */}
           <button
-            onClick={() => {
+            onClick={async () => {
               setIsOpen(false);
-              logout();
+              await logout();
+              router.push("/login");
             }}
             className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           >

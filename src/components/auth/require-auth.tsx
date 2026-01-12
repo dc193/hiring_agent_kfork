@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
 import { Loader2, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "./auth-provider";
+import { useRouter } from "next/navigation";
 
 interface RequireAuthProps {
   children: React.ReactNode;
@@ -15,7 +15,8 @@ interface RequireAuthProps {
  * Shows loading state, login prompt, or children based on auth state
  */
 export function RequireAuth({ children, fallback }: RequireAuthProps) {
-  const { user, isLoading, login } = useAuth();
+  const router = useRouter();
+  const { user, isLoading } = useAuth();
 
   // Loading state
   if (isLoading) {
@@ -45,11 +46,11 @@ export function RequireAuth({ children, fallback }: RequireAuthProps) {
             需要登录
           </h2>
           <p className="text-zinc-500 mb-6">
-            请使用 Google 账号登录以访问此页面
+            请登录以访问此页面
           </p>
-          <Button onClick={login} className="gap-2">
+          <Button onClick={() => router.push("/login")} className="gap-2">
             <LogIn className="w-4 h-4" />
-            使用 Google 登录
+            前往登录
           </Button>
         </div>
       </div>

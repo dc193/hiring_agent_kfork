@@ -1,22 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { AUTH_CONFIG } from "@/lib/auth";
-
-// User type
-interface AuthUser {
-  id: string;
-  email: string;
-  username: string;
-  name: string;
-  picture: string;
-}
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { AuthUser } from "@/lib/auth";
 
 // Auth context type
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
-  login: () => void;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -28,60 +19,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch user on mount
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(`${AUTH_CONFIG.serviceUrl}/api/auth/user`, {
-        credentials: "include",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      const response = await fetch("/api/auth/me");
 
       if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
+        const data = await response.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+        } else {
+          setUser(null);
+        }
       } else {
         setUser(null);
       }
     } catch (error) {
-      // Handle timeout or network errors gracefully
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.warn("Auth check timed out");
-      } else {
-        console.error("Failed to fetch user:", error);
-      }
+      console.error("Failed to fetch user:", error);
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchUser();
-  }, []);
+  }, [fetchUser]);
 
-  // Login - redirect to Google login
-  const login = () => {
-    const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-    const redirect = encodeURIComponent(currentUrl);
-    const loginUrl = `${AUTH_CONFIG.serviceUrl}/api/auth/google/login?redirect=${redirect}`;
-    console.log("Redirecting to:", loginUrl);
-    window.location.href = loginUrl;
+  // Login with username and password
+  const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.user) {
+        setUser(data.user);
+        return { success: true };
+      } else {
+        return { success: false, error: data.error || "登录失败" };
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+      return { success: false, error: "登录失败，请重试" };
+    }
   };
 
   // Logout
   const logout = async () => {
     try {
-      await fetch(`${AUTH_CONFIG.serviceUrl}/api/auth/logout`, {
+      await fetch("/api/auth/logout", {
         method: "POST",
-        credentials: "include",
       });
       setUser(null);
-      window.location.reload();
     } catch (error) {
       console.error("Logout failed:", error);
     }

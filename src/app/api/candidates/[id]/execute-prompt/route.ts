@@ -4,6 +4,7 @@ import { db, candidates, attachments, stagePrompts, templateStages, promptRefere
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
 import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 
 const anthropic = new Anthropic();
 
@@ -71,6 +72,16 @@ function isDocxFile(mimeType: string | null, fileName: string): boolean {
     mimeType === "application/msword" ||
     fileName.endsWith(".docx") ||
     fileName.endsWith(".doc")
+  );
+}
+
+// 检查是否为 Excel 文件
+function isExcelFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel" ||
+    fileName.endsWith(".xlsx") ||
+    fileName.endsWith(".xls")
   );
 }
 
@@ -161,6 +172,30 @@ async function createDocxBlock(
   }
 }
 
+// 创建 Excel 文件 content block（使用 xlsx 提取文本）
+async function createExcelBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+
+    const textParts: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      textParts.push(`#### Sheet: ${sheetName}\n\n${csv}`);
+    }
+
+    return [{ type: "text", text: `\n### ${fileName}\n\n${textParts.join("\n\n---\n\n")}` }];
+  } catch (error) {
+    console.error(`Error loading Excel file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法提取 Excel 文件内容]` }];
+  }
+}
+
 // Build content blocks from specifically selected attachments (native document support)
 async function buildContentBlocksFromSelectedAttachments(
   candidateId: string,
@@ -210,6 +245,10 @@ async function buildContentBlocksFromSelectedAttachments(
       } else if (isDocxFile(mimeType, fileName)) {
         // DOCX 文件：使用 mammoth 提取文本
         const blocks = await createDocxBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
+      } else if (isExcelFile(mimeType, fileName)) {
+        // Excel 文件：使用 xlsx 提取文本
+        const blocks = await createExcelBlock(attachment.blobUrl, fileName);
         contentBlocks.push(...blocks);
       } else if (isSupportedDocument(mimeType)) {
         // 文档类型（PDF）：使用原生文档块
@@ -327,6 +366,10 @@ export async function POST(
         } else if (isDocxFile(mimeType, fileName)) {
           const blocks = await createDocxBlock(refFile.blobUrl, fileName);
           console.log(`[DEBUG] Loaded DOCX file ${fileName}: extracted text`);
+          contentBlocks.push(...blocks);
+        } else if (isExcelFile(mimeType, fileName)) {
+          const blocks = await createExcelBlock(refFile.blobUrl, fileName);
+          console.log(`[DEBUG] Loaded Excel file ${fileName}: extracted text`);
           contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
           const blocks = await createDocumentBlock(refFile.blobUrl, mimeType!, fileName);

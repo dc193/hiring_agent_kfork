@@ -2,11 +2,18 @@ import { db, pipelineStageConfigs, processingJobs, attachments, candidates } fro
 import { eq, and } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
+import * as XLSX from "xlsx";
 
 // Helper: Check if mime type is a DOCX file
 function isDocxFile(mimeType: string | null): boolean {
   return mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimeType === "application/msword";
+}
+
+// Helper: Check if mime type is an Excel file
+function isExcelFile(mimeType: string | null): boolean {
+  return mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel";
 }
 
 // Helper: Extract text from DOCX file
@@ -19,6 +26,27 @@ async function extractDocxText(blobUrl: string): Promise<string> {
   } catch (error) {
     console.error("Failed to extract DOCX text:", error);
     return "[无法提取 DOCX 文件内容]";
+  }
+}
+
+// Helper: Extract text from Excel file
+async function extractExcelText(blobUrl: string): Promise<string> {
+  try {
+    const response = await fetch(blobUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: "array" });
+
+    const textParts: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      textParts.push(`## Sheet: ${sheetName}\n\n${csv}`);
+    }
+
+    return textParts.join("\n\n---\n\n");
+  } catch (error) {
+    console.error("Failed to extract Excel text:", error);
+    return "[无法提取 Excel 文件内容]";
   }
 }
 
@@ -236,6 +264,21 @@ export async function processJob(jobId: string): Promise<boolean> {
         } else if (isDocxFile(attachment.mimeType)) {
           // DOCX files - extract text using mammoth
           const content = await extractDocxText(attachment.blobUrl);
+
+          const prompt = basePrompt.replace("{content}", content);
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          });
+        } else if (isExcelFile(attachment.mimeType)) {
+          // Excel files - extract text using xlsx
+          const content = await extractExcelText(attachment.blobUrl);
 
           const prompt = basePrompt.replace("{content}", content);
           message = await anthropic.messages.create({

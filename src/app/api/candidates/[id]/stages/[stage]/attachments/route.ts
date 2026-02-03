@@ -102,46 +102,67 @@ export async function POST(
     let fileType: string;
     let mimeType: string;
 
-    // Check if this is a JSON request (text note) or form data (file upload)
+    // Check if this is a JSON request (text note or metadata save) or form data (file upload)
     if (contentType.includes("application/json")) {
-      // Text note submission
       const body = await request.json();
-      const { text, title, type: noteType, uploadedBy } = body;
+      const { text, title, type: noteType, uploadedBy, blobUrl, fileName, fileSize, mimeType: bodyMimeType } = body;
 
-      if (!text || !text.trim()) {
+      // Mode 1: Save metadata for already-uploaded file (client-side upload)
+      if (blobUrl && fileName) {
+        fileType = noteType || "other";
+        mimeType = bodyMimeType || "application/octet-stream";
+
+        // Save to database (file already uploaded via client-side upload)
+        [attachment] = await db
+          .insert(attachments)
+          .values({
+            candidateId: id,
+            pipelineStage: stage,
+            type: fileType,
+            fileName,
+            fileSize: fileSize || null,
+            mimeType,
+            blobUrl,
+            description: null,
+            uploadedBy: uploadedBy || null,
+          })
+          .returning();
+      }
+      // Mode 2: Text note submission
+      else if (text && text.trim()) {
+        const noteFileName = title ? `${title}.md` : `评审意见_${new Date().toISOString().slice(0, 10)}.md`;
+        fileType = noteType || "note";
+        mimeType = "text/markdown";
+
+        // Create a blob from the text content
+        const textBlob = new Blob([text], { type: "text/markdown" });
+
+        // Upload to Vercel Blob
+        const blob = await put(`candidates/${id}/${stage}/${noteFileName}`, textBlob, {
+          access: "public",
+        });
+
+        // Save to database
+        [attachment] = await db
+          .insert(attachments)
+          .values({
+            candidateId: id,
+            pipelineStage: stage,
+            type: fileType,
+            fileName: noteFileName,
+            fileSize: textBlob.size,
+            mimeType,
+            blobUrl: blob.url,
+            description: text.slice(0, 200) + (text.length > 200 ? "..." : ""),
+            uploadedBy: uploadedBy || null,
+          })
+          .returning();
+      } else {
         return NextResponse.json(
-          { success: false, error: "No text content provided" },
+          { success: false, error: "No content provided" },
           { status: 400 }
         );
       }
-
-      const fileName = title ? `${title}.md` : `评审意见_${new Date().toISOString().slice(0, 10)}.md`;
-      fileType = noteType || "note";
-      mimeType = "text/markdown";
-
-      // Create a blob from the text content
-      const textBlob = new Blob([text], { type: "text/markdown" });
-
-      // Upload to Vercel Blob
-      const blob = await put(`candidates/${id}/${stage}/${fileName}`, textBlob, {
-        access: "public",
-      });
-
-      // Save to database
-      [attachment] = await db
-        .insert(attachments)
-        .values({
-          candidateId: id,
-          pipelineStage: stage,
-          type: fileType,
-          fileName,
-          fileSize: textBlob.size,
-          mimeType,
-          blobUrl: blob.url,
-          description: text.slice(0, 200) + (text.length > 200 ? "..." : ""),
-          uploadedBy: uploadedBy || null,
-        })
-        .returning();
     } else {
       // File upload
       const formData = await request.formData();

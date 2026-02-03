@@ -1,6 +1,26 @@
 import { db, pipelineStageConfigs, processingJobs, attachments, candidates } from "@/db";
 import { eq, and } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import mammoth from "mammoth";
+
+// Helper: Check if mime type is a DOCX file
+function isDocxFile(mimeType: string | null): boolean {
+  return mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword";
+}
+
+// Helper: Extract text from DOCX file
+async function extractDocxText(blobUrl: string): Promise<string> {
+  try {
+    const response = await fetch(blobUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value;
+  } catch (error) {
+    console.error("Failed to extract DOCX text:", error);
+    return "[无法提取 DOCX 文件内容]";
+  }
+}
 
 interface ProcessingRule {
   fileType: string;
@@ -210,6 +230,21 @@ export async function processJob(jobId: string): Promise<boolean> {
                     text: basePrompt.replace("{content}", "请分析上面的PDF文档内容"),
                   },
                 ],
+              },
+            ],
+          });
+        } else if (isDocxFile(attachment.mimeType)) {
+          // DOCX files - extract text using mammoth
+          const content = await extractDocxText(attachment.blobUrl);
+
+          const prompt = basePrompt.replace("{content}", content);
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
               },
             ],
           });

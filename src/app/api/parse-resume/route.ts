@@ -3,8 +3,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { put } from "@vercel/blob";
 import { ParsedResume, ParseResumeResponse } from "@/types/resume";
 import { db, candidates, workExperiences, educations, projects, candidateProfiles, attachments } from "@/db";
+import mammoth from "mammoth";
 
 const anthropic = new Anthropic();
+
+// Helper: Check if file is DOCX
+function isDocxFile(fileType: string): boolean {
+  return fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    fileType === "application/msword";
+}
 
 // Type for profile analysis response
 interface ProfileAnalysisData {
@@ -212,6 +219,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<ParseResu
       textContent = visionResponse.content[0].type === "text"
         ? visionResponse.content[0].text
         : "";
+    } else if (isDocxFile(fileType)) {
+      // Handle DOCX files using mammoth
+      try {
+        const result = await mammoth.extractRawText({ arrayBuffer: fileBuffer });
+        textContent = result.value;
+      } catch (docxError) {
+        console.error("DOCX extraction error:", docxError);
+        return NextResponse.json(
+          { success: false, error: "Failed to extract text from DOCX file" },
+          { status: 500 }
+        );
+      }
     } else {
       // For text files, read directly
       textContent = new TextDecoder().decode(fileBuffer);

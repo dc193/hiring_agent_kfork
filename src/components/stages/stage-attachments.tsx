@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import {
   Upload,
   FileText,
@@ -261,16 +262,36 @@ export function StageAttachments({
     poll();
   }, [router]);
 
-  // Upload a single file
+  // Upload a single file using client-side upload (no file size limit)
   const uploadFile = useCallback(async (file: File, fileType: string): Promise<Attachment | null> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("type", fileType);
-
     try {
+      // Step 1: Upload directly to Vercel Blob (bypasses API body size limit)
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+        clientPayload: JSON.stringify({
+          candidateId,
+          stage,
+          type: fileType,
+        }),
+      });
+
+      // Step 2: Save metadata to database
       const response = await fetch(
-        `/api/candidates/${candidateId}/stages/${stage}/attachments`,
-        { method: "POST", body: formData }
+        `/api/candidates/${candidateId}/stages/${encodeURIComponent(stage)}/attachments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            blobUrl: blob.url,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+            type: fileType,
+          }),
+        }
       );
 
       const result = await response.json();
@@ -284,7 +305,8 @@ export function StageAttachments({
         return result.data;
       }
       return null;
-    } catch {
+    } catch (error) {
+      console.error("Upload failed:", error);
       return null;
     }
   }, [candidateId, stage, pollProcessingStatus]);

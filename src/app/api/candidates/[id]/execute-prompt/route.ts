@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db, candidates, attachments, stagePrompts, templateStages, promptReferenceFiles } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
+import mammoth from "mammoth";
 
 const anthropic = new Anthropic();
 
@@ -60,6 +61,16 @@ function isTextFile(mimeType: string | null, fileName: string): boolean {
     fileName.endsWith(".txt") ||
     fileName.endsWith(".json") ||
     fileName.endsWith(".csv")
+  );
+}
+
+// 检查是否为 DOCX 文件
+function isDocxFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword" ||
+    fileName.endsWith(".docx") ||
+    fileName.endsWith(".doc")
   );
 }
 
@@ -134,6 +145,22 @@ async function createTextBlock(
   }
 }
 
+// 创建 DOCX 文件 content block（使用 mammoth 提取文本）
+async function createDocxBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return [{ type: "text", text: `\n### ${fileName}\n\n${result.value}` }];
+  } catch (error) {
+    console.error(`Error loading DOCX file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法提取 DOCX 文件内容]` }];
+  }
+}
+
 // Build content blocks from specifically selected attachments (native document support)
 async function buildContentBlocksFromSelectedAttachments(
   candidateId: string,
@@ -179,6 +206,10 @@ async function buildContentBlocksFromSelectedAttachments(
       if (isTextFile(mimeType, fileName)) {
         // 纯文本文件：直接读取
         const blocks = await createTextBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
+      } else if (isDocxFile(mimeType, fileName)) {
+        // DOCX 文件：使用 mammoth 提取文本
+        const blocks = await createDocxBlock(attachment.blobUrl, fileName);
         contentBlocks.push(...blocks);
       } else if (isSupportedDocument(mimeType)) {
         // 文档类型（PDF）：使用原生文档块
@@ -292,6 +323,10 @@ export async function POST(
           // 🔍 DEBUG: Log loaded content length
           const textContent = blocks.find(b => b.type === "text" && (b as TextBlock).text.includes(fileName)) as TextBlock | undefined;
           console.log(`[DEBUG] Loaded text file ${fileName}: ${textContent ? textContent.text.length : 0} chars`);
+          contentBlocks.push(...blocks);
+        } else if (isDocxFile(mimeType, fileName)) {
+          const blocks = await createDocxBlock(refFile.blobUrl, fileName);
+          console.log(`[DEBUG] Loaded DOCX file ${fileName}: extracted text`);
           contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
           const blocks = await createDocumentBlock(refFile.blobUrl, mimeType!, fileName);

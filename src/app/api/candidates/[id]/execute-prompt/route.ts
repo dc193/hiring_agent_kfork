@@ -3,6 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db, candidates, attachments, stagePrompts, templateStages, promptReferenceFiles } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { put } from "@vercel/blob";
+import mammoth from "mammoth";
+import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
 const anthropic = new Anthropic();
 
@@ -60,6 +63,36 @@ function isTextFile(mimeType: string | null, fileName: string): boolean {
     fileName.endsWith(".txt") ||
     fileName.endsWith(".json") ||
     fileName.endsWith(".csv")
+  );
+}
+
+// 检查是否为 DOCX 文件
+function isDocxFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword" ||
+    fileName.endsWith(".docx") ||
+    fileName.endsWith(".doc")
+  );
+}
+
+// 检查是否为 Excel 文件
+function isExcelFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mimeType === "application/vnd.ms-excel" ||
+    fileName.endsWith(".xlsx") ||
+    fileName.endsWith(".xls")
+  );
+}
+
+// 检查是否为 PowerPoint 文件
+function isPptxFile(mimeType: string | null, fileName: string): boolean {
+  return (
+    mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    mimeType === "application/vnd.ms-powerpoint" ||
+    fileName.endsWith(".pptx") ||
+    fileName.endsWith(".ppt")
   );
 }
 
@@ -134,6 +167,85 @@ async function createTextBlock(
   }
 }
 
+// 创建 DOCX 文件 content block（使用 mammoth 提取文本）
+async function createDocxBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return [{ type: "text", text: `\n### ${fileName}\n\n${result.value}` }];
+  } catch (error) {
+    console.error(`Error loading DOCX file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法提取 DOCX 文件内容]` }];
+  }
+}
+
+// 创建 Excel 文件 content block（使用 xlsx 提取文本）
+async function createExcelBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+
+    const textParts: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      textParts.push(`#### Sheet: ${sheetName}\n\n${csv}`);
+    }
+
+    return [{ type: "text", text: `\n### ${fileName}\n\n${textParts.join("\n\n---\n\n")}` }];
+  } catch (error) {
+    console.error(`Error loading Excel file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法提取 Excel 文件内容]` }];
+  }
+}
+
+// 创建 PowerPoint 文件 content block（使用 jszip 提取文本）
+async function createPptxBlock(
+  blobUrl: string,
+  fileName: string
+): Promise<ContentBlock[]> {
+  try {
+    const response = await fetch(blobUrl);
+    const buffer = await response.arrayBuffer();
+    const zip = await JSZip.loadAsync(buffer);
+
+    const slideTexts: string[] = [];
+    const slideFiles = Object.keys(zip.files)
+      .filter(name => name.match(/^ppt\/slides\/slide\d+\.xml$/))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/slide(\d+)/)?.[1] || "0");
+        const numB = parseInt(b.match(/slide(\d+)/)?.[1] || "0");
+        return numA - numB;
+      });
+
+    for (const slideFile of slideFiles) {
+      const slideContent = await zip.files[slideFile].async("string");
+      // Extract text from <a:t> tags (PowerPoint text elements)
+      const textMatches = slideContent.match(/<a:t>([^<]*)<\/a:t>/g) || [];
+      const texts = textMatches.map(match => match.replace(/<\/?a:t>/g, "").trim()).filter(t => t);
+
+      if (texts.length > 0) {
+        const slideNum = slideFile.match(/slide(\d+)/)?.[1] || "?";
+        slideTexts.push(`#### Slide ${slideNum}\n\n${texts.join("\n")}`);
+      }
+    }
+
+    const content = slideTexts.length > 0 ? slideTexts.join("\n\n---\n\n") : "[PPT 中未找到文本内容]";
+    return [{ type: "text", text: `\n### ${fileName}\n\n${content}` }];
+  } catch (error) {
+    console.error(`Error loading PowerPoint file ${fileName}:`, error);
+    return [{ type: "text", text: `\n### ${fileName}\n\n[无法提取 PowerPoint 文件内容]` }];
+  }
+}
+
 // Build content blocks from specifically selected attachments (native document support)
 async function buildContentBlocksFromSelectedAttachments(
   candidateId: string,
@@ -179,6 +291,18 @@ async function buildContentBlocksFromSelectedAttachments(
       if (isTextFile(mimeType, fileName)) {
         // 纯文本文件：直接读取
         const blocks = await createTextBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
+      } else if (isDocxFile(mimeType, fileName)) {
+        // DOCX 文件：使用 mammoth 提取文本
+        const blocks = await createDocxBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
+      } else if (isExcelFile(mimeType, fileName)) {
+        // Excel 文件：使用 xlsx 提取文本
+        const blocks = await createExcelBlock(attachment.blobUrl, fileName);
+        contentBlocks.push(...blocks);
+      } else if (isPptxFile(mimeType, fileName)) {
+        // PowerPoint 文件：使用 jszip 提取文本
+        const blocks = await createPptxBlock(attachment.blobUrl, fileName);
         contentBlocks.push(...blocks);
       } else if (isSupportedDocument(mimeType)) {
         // 文档类型（PDF）：使用原生文档块
@@ -292,6 +416,18 @@ export async function POST(
           // 🔍 DEBUG: Log loaded content length
           const textContent = blocks.find(b => b.type === "text" && (b as TextBlock).text.includes(fileName)) as TextBlock | undefined;
           console.log(`[DEBUG] Loaded text file ${fileName}: ${textContent ? textContent.text.length : 0} chars`);
+          contentBlocks.push(...blocks);
+        } else if (isDocxFile(mimeType, fileName)) {
+          const blocks = await createDocxBlock(refFile.blobUrl, fileName);
+          console.log(`[DEBUG] Loaded DOCX file ${fileName}: extracted text`);
+          contentBlocks.push(...blocks);
+        } else if (isExcelFile(mimeType, fileName)) {
+          const blocks = await createExcelBlock(refFile.blobUrl, fileName);
+          console.log(`[DEBUG] Loaded Excel file ${fileName}: extracted text`);
+          contentBlocks.push(...blocks);
+        } else if (isPptxFile(mimeType, fileName)) {
+          const blocks = await createPptxBlock(refFile.blobUrl, fileName);
+          console.log(`[DEBUG] Loaded PowerPoint file ${fileName}: extracted text`);
           contentBlocks.push(...blocks);
         } else if (isSupportedDocument(mimeType)) {
           const blocks = await createDocumentBlock(refFile.blobUrl, mimeType!, fileName);

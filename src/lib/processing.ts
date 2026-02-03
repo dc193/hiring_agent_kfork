@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
 // Helper: Check if mime type is a DOCX file
 function isDocxFile(mimeType: string | null): boolean {
@@ -14,6 +15,12 @@ function isDocxFile(mimeType: string | null): boolean {
 function isExcelFile(mimeType: string | null): boolean {
   return mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
     mimeType === "application/vnd.ms-excel";
+}
+
+// Helper: Check if mime type is a PowerPoint file
+function isPptxFile(mimeType: string | null): boolean {
+  return mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    mimeType === "application/vnd.ms-powerpoint";
 }
 
 // Helper: Extract text from DOCX file
@@ -47,6 +54,41 @@ async function extractExcelText(blobUrl: string): Promise<string> {
   } catch (error) {
     console.error("Failed to extract Excel text:", error);
     return "[无法提取 Excel 文件内容]";
+  }
+}
+
+// Helper: Extract text from PowerPoint file
+async function extractPptxText(blobUrl: string): Promise<string> {
+  try {
+    const response = await fetch(blobUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    const slideTexts: string[] = [];
+    const slideFiles = Object.keys(zip.files)
+      .filter(name => name.match(/^ppt\/slides\/slide\d+\.xml$/))
+      .sort((a, b) => {
+        const numA = parseInt(a.match(/slide(\d+)/)?.[1] || "0");
+        const numB = parseInt(b.match(/slide(\d+)/)?.[1] || "0");
+        return numA - numB;
+      });
+
+    for (const slideFile of slideFiles) {
+      const slideContent = await zip.files[slideFile].async("string");
+      // Extract text from <a:t> tags (PowerPoint text elements)
+      const textMatches = slideContent.match(/<a:t>([^<]*)<\/a:t>/g) || [];
+      const texts = textMatches.map(match => match.replace(/<\/?a:t>/g, "").trim()).filter(t => t);
+
+      if (texts.length > 0) {
+        const slideNum = slideFile.match(/slide(\d+)/)?.[1] || "?";
+        slideTexts.push(`## Slide ${slideNum}\n\n${texts.join("\n")}`);
+      }
+    }
+
+    return slideTexts.length > 0 ? slideTexts.join("\n\n---\n\n") : "[PPT 中未找到文本内容]";
+  } catch (error) {
+    console.error("Failed to extract PPTX text:", error);
+    return "[无法提取 PowerPoint 文件内容]";
   }
 }
 
@@ -279,6 +321,21 @@ export async function processJob(jobId: string): Promise<boolean> {
         } else if (isExcelFile(attachment.mimeType)) {
           // Excel files - extract text using xlsx
           const content = await extractExcelText(attachment.blobUrl);
+
+          const prompt = basePrompt.replace("{content}", content);
+          message = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            messages: [
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+          });
+        } else if (isPptxFile(attachment.mimeType)) {
+          // PowerPoint files - extract text using jszip
+          const content = await extractPptxText(attachment.blobUrl);
 
           const prompt = basePrompt.replace("{content}", content);
           message = await anthropic.messages.create({
